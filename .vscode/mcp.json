@@ -1,0 +1,26 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "sapAdtUser",
+      "description": "SAP username for mcp-sap-adt (basic auth)"
+    },
+    {
+      "type": "promptString",
+      "id": "sapAdtPassword",
+      "description": "SAP password for mcp-sap-adt (basic auth)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "sap-adt": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/dist/src/server.js"],
+      "env": {
+        "SAP_ADT_DEV_USER": "${input:sapAdtUser}",
+        "SAP_ADT_DEV_PASSWORD": "${input:sapAdtPassword}"
+      }
+    }
+  }
+}

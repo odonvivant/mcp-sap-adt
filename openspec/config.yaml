@@ -1,0 +1,73 @@
+schema: spec-driven
+
+context: |
+  Tech stack: TypeScript, Node >= 18, @modelcontextprotocol/sdk (stdio transport), Jest/ts-jest.
+  Purpose: an MCP server for investigating and mapping SAP ECC and S/4HANA (HANA-DB) ABAP
+  systems via ADT - source/dependency discovery, where-used analysis, transport content
+  inspection, ATC-based custom-code checks - to support custom code migration assessments and
+  transport/object dependency checks. Full ADT tool surface (comparable breadth to the reference
+  mcp-abap-abap-adt-api server), but every mutating/risky tool is gated by a guardrail layer.
+  This repo is a thin composition layer over two sibling, independently-released repos:
+    - sap-adt-client: the from-scratch ADT protocol client (session/auth/XML/operations)
+    - mcp-guardrails: the generic risk-tiered guardrail/elicitation engine
+  consumed as git dependencies (git+https://.../sap-adt-client.git#<tag>, same for
+  mcp-guardrails) - not npm-registry packages. This repo supplies the SAP/ADT-specific pieces
+  that don't belong in either standalone repo: SystemRegistry (named systems: dev/qas/prd/...,
+  each with its own URL/client/auth - basic or client-certificate/mTLS - and guardrail mode:
+  read-only/guarded/open), the ADT-specific risk-tier assignments plugged into mcp-guardrails'
+  generic engine, the tool inventory itself, server wiring, an interactive setup wizard
+  (Node's built-in readline/promises, no new dependency) that writes systems.json on first run,
+  and all install documentation.
+  Every tool's input schema takes a required `system` parameter (an alias into SystemRegistry)
+  instead of one system per process. Tools depend only on an IAdtGateway interface, never on
+  sap-adt-client internals directly (Dependency Inversion) - this is what lets the guardrail
+  layer and AdtError normalization apply uniformly across the whole tool surface.
+  Dependency trust policy: no third-party library that reimplements ADT/SAP protocol semantics
+  for us (specifically excludes abap-adt-api). Node built-ins, zod, @modelcontextprotocol/sdk,
+  and the two sibling repos above are fine. Nothing else without flagging it first.
+  Origin: no code copied from the two existing reference ADT MCP servers in the sibling
+  workspace (mcp-abap-adt, mcp-abap-abap-adt-api) - written fresh.
+  Distribution: git clone + `npm install && npm run build && npm run setup` - no npm registry
+  publish for v1. README must cover Claude Desktop, Claude Code, VS Code/GitHub Copilot
+  (.vscode/mcp.json with ${input:...} for secrets, plus an install deep-link badge - the harness
+  that should be the simplest to set up), and Cline.
+  Full build plan (source of truth for scope/architecture/milestones):
+  C:\Users\don\.claude\plans\giggly-sniffing-lark.md
+
+rules:
+  proposal:
+    - State which risk tier (A/B/C) each newly-added tool falls into and why
+  tasks:
+    - Call out the systems.json shape and setup-wizard behavior as an explicit task, not an afterthought
+    - Include a README/install-docs task for every harness listed in context
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

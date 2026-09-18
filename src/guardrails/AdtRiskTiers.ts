@@ -1,0 +1,63 @@
+/**
+ * ADT-specific risk-tier assignment, one entry per registered tool. Static and editorial (per
+ * `design.md` D3), not derived from the underlying HTTP verb - e.g. `adt_atc_create_run` is a
+ * POST but Tier B (creates an inspectable run, doesn't touch source), while
+ * `adt_object_activate` is also a POST but Tier C (can make a production object live).
+ *
+ * `ToolRegistry` looks up a tool's tier here by name at registration time and fails fast if a
+ * tool has no entry - this table, not a self-declared field on the tool module, is the single
+ * source of truth so tier assignment stays auditable in one place.
+ */
+export type RiskTier = 'A' | 'B' | 'C';
+
+const TIER_ORDER: RiskTier[] = ['A', 'B', 'C'];
+
+/** `TierComparator<RiskTier>` for `mcp-guardrails`' `ConfigPolicy`/`isAtLeastAsRisky`. */
+export function compareTiers(a: RiskTier, b: RiskTier): number {
+  return TIER_ORDER.indexOf(a) - TIER_ORDER.indexOf(b);
+}
+
+export const ADT_RISK_TIERS: Record<string, RiskTier> = {
+  // Tier A - read-only, no mutation, no guardrail prompt in any mode.
+  adt_discovery: 'A',
+  adt_search: 'A',
+  adt_object_source_read: 'A',
+  adt_ddic_element: 'A',
+  adt_usage_references: 'A',
+  adt_package_contents: 'A',
+  adt_transport_info: 'A',
+  adt_revisions: 'A',
+  adt_atc_worklist: 'A',
+  adt_git_repos: 'A',
+
+  // Tier B - creates state but does not alter source/transports; reversible/inspectable; also
+  // used for reads that are technically non-mutating but carry a confidentiality/execution risk
+  // a plain metadata read doesn't (per the one-time SAP-domain review in tasks.md 8.3).
+  adt_ddic_table_contents: 'B', // arbitrary application-data query (up to 10k rows) - can expose
+  // PII/financial data; a plain-read Tier A with no confirmation on any mode (including a
+  // "read-only" production system) understates that.
+  adt_atc_create_run: 'B',
+  adt_transport_create: 'B',
+  adt_refactor_rename_preview: 'B',
+  adt_object_unlock: 'B', // releases state rather than creating it; gating it as hard as `lock`
+  // strands an enqueue lock if a confirmation is declined/unsupported, blocking other developers.
+  adt_debugger_delete_breakpoints: 'B', // same asymmetry - leftover breakpoints halt live sessions.
+
+  // Tier C - destructive, production-impacting, or executes arbitrary customer code.
+  adt_unit_test_run: 'C', // ABAP Unit test classes can be marked DANGEROUS/CRITICAL and legitimately
+  // commit DB changes or call remote systems - this runs arbitrary customer ABAP, not just
+  // "creates an inspectable run".
+  adt_transport_release: 'C',
+  adt_object_source_write: 'C',
+  adt_object_create: 'C',
+  adt_object_delete: 'C',
+  adt_object_lock: 'C',
+  adt_object_activate: 'C',
+  adt_refactor_rename_execute: 'C',
+  adt_git_pull: 'C',
+  adt_git_push: 'C',
+  adt_debugger_attach: 'C',
+  adt_debugger_set_breakpoints: 'C',
+  adt_debugger_step: 'C',
+  adt_debugger_variables: 'C',
+};
