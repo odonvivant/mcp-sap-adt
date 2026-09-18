@@ -29,6 +29,12 @@ export const ADT_RISK_TIERS: Record<string, RiskTier> = {
   adt_revisions: 'A',
   adt_atc_worklist: 'A',
   adt_git_repos: 'A',
+  adt_syntax_check: 'A', // POST, but only evaluates a supplied source buffer - no state created.
+  adt_code_completion_proposal: 'A', // same: transient analysis of a supplied buffer.
+  adt_code_completion_element_info: 'A',
+  adt_traces_list: 'A',
+  adt_traces_hit_list: 'A',
+  adt_traces_db_access: 'A',
 
   // Tier B - creates state but does not alter source/transports; reversible/inspectable; also
   // used for reads that are technically non-mutating but carry a confidentiality/execution risk
@@ -42,6 +48,13 @@ export const ADT_RISK_TIERS: Record<string, RiskTier> = {
   adt_object_unlock: 'B', // releases state rather than creating it; gating it as hard as `lock`
   // strands an enqueue lock if a confirmation is declined/unsupported, blocking other developers.
   adt_debugger_delete_breakpoints: 'B', // same asymmetry - leftover breakpoints halt live sessions.
+  adt_traces_create_configuration: 'B', // creates a transient trace run request - inspectable/
+  // reversible, same class as adt_atc_create_run.
+  adt_refactor_extract_method_preview: 'B',
+  adt_traces_delete: 'B', // deletes what adt_traces_create_configuration (also B) creates - same
+  // "cleanup is never gated harder than the action that created it" asymmetry as unlock/
+  // delete-breakpoints above; a declined/unsupported confirmation would otherwise strand a live
+  // trace consuming system resources instead of releasing it.
 
   // Tier C - destructive, production-impacting, or executes arbitrary customer code.
   adt_unit_test_run: 'C', // ABAP Unit test classes can be marked DANGEROUS/CRITICAL and legitimately
@@ -60,4 +73,6 @@ export const ADT_RISK_TIERS: Record<string, RiskTier> = {
   adt_debugger_set_breakpoints: 'C',
   adt_debugger_step: 'C',
   adt_debugger_variables: 'C',
+  adt_refactor_extract_method_execute: 'C',
+  adt_debugger_set_variable_value: 'C', // modifies live process state, same class as attach/step.
 };

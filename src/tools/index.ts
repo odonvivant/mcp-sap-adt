@@ -12,6 +12,9 @@ import { unitTestTools } from './unitTest';
 import { objectManagementTools } from './objectManagement';
 import { debuggerTools } from './debuggerTools';
 import { gitTools } from './git';
+import { syntaxCheckTools } from './syntaxCheck';
+import { codeCompletionTools } from './codeCompletion';
+import { tracesTools } from './traces';
 import type { Tool } from './Tool';
 
 /** The full registered tool inventory, one array per ADT domain (per `tools` spec's "full
@@ -32,4 +35,7 @@ export const allTools: Array<Tool<any, unknown>> = [
   ...objectManagementTools,
   ...debuggerTools,
   ...gitTools,
+  ...syntaxCheckTools,
+  ...codeCompletionTools,
+  ...tracesTools,
 ];

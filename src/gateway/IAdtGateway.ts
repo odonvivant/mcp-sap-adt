@@ -1,5 +1,6 @@
 import type {
   AdtObjectRef,
+  AdtCheckMessage,
   discovery,
   objectSource,
   atc,
@@ -8,6 +9,8 @@ import type {
   debuggerOps,
   git,
   revisions as revisionsOps,
+  codeCompletion,
+  traces,
 } from 'sap-adt-client';
 
 type AdtServiceCollection = discovery.AdtServiceCollection;
@@ -18,6 +21,12 @@ type ActivationResult = objectManagement.ActivationResult;
 type DebugVariable = debuggerOps.DebugVariable;
 type GitRepo = git.GitRepo;
 type AdtRevision = revisionsOps.AdtRevision;
+type SourcePosition = codeCompletion.SourcePosition;
+type CodeCompletionProposal = codeCompletion.CodeCompletionProposal;
+type CodeCompletionElementInfo = codeCompletion.CodeCompletionElementInfo;
+type TraceRun = traces.TraceRun;
+type TraceHitListEntry = traces.TraceHitListEntry;
+type TraceDbAccessEntry = traces.TraceDbAccessEntry;
 
 /**
  * The Dependency Inversion seam every tool module depends on instead of `sap-adt-client`
@@ -105,4 +114,36 @@ export interface IAdtGateway {
   gitRepos(system: string): Promise<GitRepo[]>;
   gitPull(system: string, args: { repositoryKey: string; branch?: string }): Promise<{ objectsChanged: unknown[] }>;
   gitPush(system: string, args: { repositoryKey: string; comment: string }): Promise<{ commitId?: string }>;
+
+  syntaxCheck(
+    system: string,
+    args: { objectUri: string; content: string; version?: string },
+  ): Promise<AdtCheckMessage[]>;
+
+  codeCompletionProposal(system: string, args: SourcePosition): Promise<CodeCompletionProposal[]>;
+  codeCompletionElementInfo(system: string, args: SourcePosition): Promise<CodeCompletionElementInfo>;
+
+  tracesList(system: string, args: { user: string }): Promise<TraceRun[]>;
+  tracesHitList(system: string, args: { traceUri: string }): Promise<TraceHitListEntry[]>;
+  tracesDbAccess(system: string, args: { traceUri: string }): Promise<TraceDbAccessEntry[]>;
+  tracesCreateConfiguration(
+    system: string,
+    args: { processType: string; objectType: string; description?: string },
+  ): Promise<{ configurationUri: string }>;
+  tracesDelete(system: string, args: { uri: string }): Promise<void>;
+
+  extractMethodPreview(
+    system: string,
+    args: {
+      objectUri: string;
+      range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+      methodName: string;
+    },
+  ): Promise<{ previewId: string; affectedLocations: unknown[] }>;
+  extractMethodExecute(system: string, args: { previewId: string }): Promise<{ changedObjects: string[] }>;
+
+  debuggerSetVariableValue(
+    system: string,
+    args: { debuggeeId: string; variableName: string; value: string },
+  ): Promise<void>;
 }

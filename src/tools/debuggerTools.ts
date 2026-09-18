@@ -96,10 +96,36 @@ export const debuggerVariablesTool: Tool<z.infer<typeof variablesInputSchema>> =
   execute: (gateway, args) => gateway.debuggerVariables(args.system, { debuggeeId: args.debuggeeId, parentId: args.parentId }),
 };
 
+const setVariableValueInputSchema = z
+  .object({
+    system: z.string().min(1),
+    debuggeeId: z.string().min(1),
+    variableName: z.string().min(1),
+    value: z.string(),
+  })
+  .strict();
+
+/** Tier C. Sets the value of a variable in an attached, stopped debug session - modifies live
+ * process state, same class as adt_debugger_attach/adt_debugger_step. */
+export const debuggerSetVariableValueTool: Tool<z.infer<typeof setVariableValueInputSchema>> = {
+  name: 'adt_debugger_set_variable_value',
+  description: 'Sets the value of a variable in an attached, stopped debug session.',
+  inputSchema: setVariableValueInputSchema,
+  execute: async (gateway, args) => {
+    await gateway.debuggerSetVariableValue(args.system, {
+      debuggeeId: args.debuggeeId,
+      variableName: args.variableName,
+      value: args.value,
+    });
+    return { success: true };
+  },
+};
+
 export const debuggerTools = [
   debuggerAttachTool,
   debuggerSetBreakpointsTool,
   debuggerDeleteBreakpointsTool,
   debuggerStepTool,
   debuggerVariablesTool,
+  debuggerSetVariableValueTool,
 ];

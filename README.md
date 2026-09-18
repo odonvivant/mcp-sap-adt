@@ -20,7 +20,7 @@ This repo is a thin composition layer over two independently-releasable librarie
   agnostic risk-tiered guardrail/elicitation engine, usable by any MCP server, not just this one.
 
 `mcp-sap-adt` itself only supplies what's SAP/ADT-specific: the named-system registry, the
-per-tool risk tiers, the ~30 ADT tools, server wiring, the setup wizard, and this documentation.
+per-tool risk tiers, the ~40 ADT tools, server wiring, the setup wizard, and this documentation.
 See [Architecture](#architecture) for why the split.
 
 ## Quickstart
@@ -132,9 +132,9 @@ tier:
 
 | Tier | Meaning | Examples |
 |---|---|---|
-| A | Read-only, no mutation, no meaningful data-exposure/execution risk | discovery, search, object source read, DDIC metadata, usage references, package contents, transport/revision/ATC-worklist read, abapGit repo listing |
-| B | Creates state but doesn't touch source/transports, or a read/cleanup carrying more than plain-metadata risk | table data query, ATC run creation, transport creation, rename preview, object unlock, debugger breakpoint removal |
-| C | Destructive, production-impacting, or executes arbitrary customer code | object create/delete/lock/activate, source write, transport release, abapGit pull/push, unit test run, debugger attach/step/set-breakpoints/variables, rename execute |
+| A | Read-only, no mutation, no meaningful data-exposure/execution risk | discovery, search, object source read, DDIC metadata, usage references, package contents, transport/revision/ATC-worklist read, abapGit repo listing, syntax check, code completion, trace list/hit list/DB access |
+| B | Creates state but doesn't touch source/transports, or a read/cleanup carrying more than plain-metadata risk | table data query, ATC run creation, transport creation, rename/extract-method preview, object unlock, debugger breakpoint removal, trace configuration creation/deletion |
+| C | Destructive, production-impacting, or executes arbitrary customer code | object create/delete/lock/activate, source write, transport release, abapGit pull/push, unit test run, debugger attach/step/set-breakpoints/variables/set-variable-value, rename/extract-method execute |
 
 Per-system `mode`:
 

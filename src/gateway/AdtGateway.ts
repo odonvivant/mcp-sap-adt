@@ -13,6 +13,9 @@ import {
   objectManagement,
   debuggerOps,
   git,
+  syntaxCheck,
+  codeCompletion,
+  traces,
 } from 'sap-adt-client';
 import type { SystemRegistry } from '../config/SystemRegistry';
 import type { IAdtGateway } from './IAdtGateway';
@@ -144,5 +147,49 @@ export class AdtGateway implements IAdtGateway {
 
   gitPush(system: string, args: Parameters<IAdtGateway['gitPush']>[1]) {
     return git.gitPush(this.systems.getConnection(system), args);
+  }
+
+  syntaxCheck(system: string, args: Parameters<IAdtGateway['syntaxCheck']>[1]) {
+    return syntaxCheck.syntaxCheck(this.systems.getConnection(system), args);
+  }
+
+  codeCompletionProposal(system: string, args: Parameters<IAdtGateway['codeCompletionProposal']>[1]) {
+    return codeCompletion.codeCompletionProposal(this.systems.getConnection(system), args);
+  }
+
+  codeCompletionElementInfo(system: string, args: Parameters<IAdtGateway['codeCompletionElementInfo']>[1]) {
+    return codeCompletion.codeCompletionElementInfo(this.systems.getConnection(system), args);
+  }
+
+  tracesList(system: string, args: Parameters<IAdtGateway['tracesList']>[1]) {
+    return traces.tracesList(this.systems.getConnection(system), args);
+  }
+
+  tracesHitList(system: string, args: Parameters<IAdtGateway['tracesHitList']>[1]) {
+    return traces.tracesHitList(this.systems.getConnection(system), args);
+  }
+
+  tracesDbAccess(system: string, args: Parameters<IAdtGateway['tracesDbAccess']>[1]) {
+    return traces.tracesDbAccess(this.systems.getConnection(system), args);
+  }
+
+  tracesCreateConfiguration(system: string, args: Parameters<IAdtGateway['tracesCreateConfiguration']>[1]) {
+    return traces.tracesCreateConfiguration(this.systems.getConnection(system), args);
+  }
+
+  tracesDelete(system: string, args: Parameters<IAdtGateway['tracesDelete']>[1]) {
+    return traces.tracesDelete(this.systems.getConnection(system), args);
+  }
+
+  extractMethodPreview(system: string, args: Parameters<IAdtGateway['extractMethodPreview']>[1]) {
+    return refactor.extractMethodPreview(this.systems.getConnection(system), args);
+  }
+
+  extractMethodExecute(system: string, args: Parameters<IAdtGateway['extractMethodExecute']>[1]) {
+    return refactor.extractMethodExecute(this.systems.getConnection(system), args);
+  }
+
+  debuggerSetVariableValue(system: string, args: Parameters<IAdtGateway['debuggerSetVariableValue']>[1]) {
+    return debuggerOps.setVariableValue(this.systems.getConnection(system), args);
   }
 }

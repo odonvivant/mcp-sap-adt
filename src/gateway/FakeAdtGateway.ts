@@ -127,4 +127,37 @@ export class FakeAdtGateway implements IAdtGateway {
   gitPush(system: string, args: unknown) {
     return this.invoke('gitPush', system, args);
   }
+  syntaxCheck(system: string, args: unknown) {
+    return this.invoke('syntaxCheck', system, args);
+  }
+  codeCompletionProposal(system: string, args: unknown) {
+    return this.invoke('codeCompletionProposal', system, args);
+  }
+  codeCompletionElementInfo(system: string, args: unknown) {
+    return this.invoke('codeCompletionElementInfo', system, args);
+  }
+  tracesList(system: string, args: unknown) {
+    return this.invoke('tracesList', system, args);
+  }
+  tracesHitList(system: string, args: unknown) {
+    return this.invoke('tracesHitList', system, args);
+  }
+  tracesDbAccess(system: string, args: unknown) {
+    return this.invoke('tracesDbAccess', system, args);
+  }
+  tracesCreateConfiguration(system: string, args: unknown) {
+    return this.invoke('tracesCreateConfiguration', system, args);
+  }
+  tracesDelete(system: string, args: unknown) {
+    return this.invoke('tracesDelete', system, args);
+  }
+  extractMethodPreview(system: string, args: unknown) {
+    return this.invoke('extractMethodPreview', system, args);
+  }
+  extractMethodExecute(system: string, args: unknown) {
+    return this.invoke('extractMethodExecute', system, args);
+  }
+  debuggerSetVariableValue(system: string, args: unknown) {
+    return this.invoke('debuggerSetVariableValue', system, args);
+  }
 }

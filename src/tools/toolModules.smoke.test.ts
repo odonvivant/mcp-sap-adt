@@ -225,6 +225,87 @@ const cases: Case[] = [
     expectedGatewayArgs: { repositoryKey: 'K1', comment: 'msg' },
     resultValue: { commitId: 'C1' },
   },
+  {
+    name: 'adt_syntax_check',
+    args: { system: 'dev', objectUri: '/x', content: 'REPORT.' },
+    gatewayMethod: 'syntaxCheck',
+    expectedGatewayArgs: { objectUri: '/x', content: 'REPORT.', version: undefined },
+    resultValue: [],
+  },
+  {
+    name: 'adt_code_completion_proposal',
+    args: { system: 'dev', objectUri: '/x', source: 'REPORT.', line: 1, column: 0 },
+    gatewayMethod: 'codeCompletionProposal',
+    expectedGatewayArgs: { objectUri: '/x', source: 'REPORT.', line: 1, column: 0 },
+    resultValue: [],
+  },
+  {
+    name: 'adt_code_completion_element_info',
+    args: { system: 'dev', objectUri: '/x', source: 'REPORT.', line: 1, column: 0 },
+    gatewayMethod: 'codeCompletionElementInfo',
+    expectedGatewayArgs: { objectUri: '/x', source: 'REPORT.', line: 1, column: 0 },
+    resultValue: { name: 'FOO' },
+  },
+  {
+    name: 'adt_traces_list',
+    args: { system: 'dev', user: 'DEVUSER' },
+    gatewayMethod: 'tracesList',
+    expectedGatewayArgs: { user: 'DEVUSER' },
+    resultValue: [],
+  },
+  {
+    name: 'adt_traces_hit_list',
+    args: { system: 'dev', traceUri: '/traces/T1' },
+    gatewayMethod: 'tracesHitList',
+    expectedGatewayArgs: { traceUri: '/traces/T1' },
+    resultValue: [],
+  },
+  {
+    name: 'adt_traces_db_access',
+    args: { system: 'dev', traceUri: '/traces/T1' },
+    gatewayMethod: 'tracesDbAccess',
+    expectedGatewayArgs: { traceUri: '/traces/T1' },
+    resultValue: [],
+  },
+  {
+    name: 'adt_traces_create_configuration',
+    args: { system: 'dev', processType: 'UICALLBACK', objectType: 'CLAS' },
+    gatewayMethod: 'tracesCreateConfiguration',
+    expectedGatewayArgs: { processType: 'UICALLBACK', objectType: 'CLAS', description: undefined },
+    resultValue: { configurationUri: '/traces/config/1' },
+  },
+  {
+    name: 'adt_traces_delete',
+    args: { system: 'dev', uri: '/traces/T1' },
+    gatewayMethod: 'tracesDelete',
+    expectedGatewayArgs: { uri: '/traces/T1' },
+    resultValue: undefined,
+  },
+  {
+    name: 'adt_refactor_extract_method_preview',
+    args: { system: 'dev', objectUri: '/x', startLine: 1, startColumn: 0, endLine: 2, endColumn: 5, methodName: 'GET_FOO' },
+    gatewayMethod: 'extractMethodPreview',
+    expectedGatewayArgs: {
+      objectUri: '/x',
+      range: { startLine: 1, startColumn: 0, endLine: 2, endColumn: 5 },
+      methodName: 'GET_FOO',
+    },
+    resultValue: { previewId: 'P1', affectedLocations: [] },
+  },
+  {
+    name: 'adt_refactor_extract_method_execute',
+    args: { system: 'dev', previewId: 'P1' },
+    gatewayMethod: 'extractMethodExecute',
+    expectedGatewayArgs: { previewId: 'P1' },
+    resultValue: { changedObjects: [] },
+  },
+  {
+    name: 'adt_debugger_set_variable_value',
+    args: { system: 'dev', debuggeeId: 'D1', variableName: 'LV_FOO', value: "'BAR'" },
+    gatewayMethod: 'debuggerSetVariableValue',
+    expectedGatewayArgs: { debuggeeId: 'D1', variableName: 'LV_FOO', value: "'BAR'" },
+    resultValue: undefined,
+  },
 ];
 
 describe('tool module smoke tests (args validated, forwarded to IAdtGateway)', () => {
@@ -254,7 +335,9 @@ describe('tool module smoke tests (args validated, forwarded to IAdtGateway)', (
           testCase.gatewayMethod === 'deleteObject' ||
           testCase.gatewayMethod === 'unlockObject' ||
           testCase.gatewayMethod === 'debuggerDeleteBreakpoints' ||
-          testCase.gatewayMethod === 'debuggerStep'
+          testCase.gatewayMethod === 'debuggerStep' ||
+          testCase.gatewayMethod === 'tracesDelete' ||
+          testCase.gatewayMethod === 'debuggerSetVariableValue'
           ? { success: true }
           : testCase.resultValue,
       );
