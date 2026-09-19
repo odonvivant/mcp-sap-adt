@@ -105,10 +105,21 @@ tables). Flag if a proposed descriptive name is close to or over the likely limi
 object type, and note that the exact limit for less-common object types hasn't been verified here -
 confirm in SE80/SE11 if it matters before finalizing.
 
-Where a widely-recognized ABAP type infix helps readability (`_CL_`/`CL_`-style for classes,
-`_IF_`/`IF_`-style for interfaces, etc.), you may suggest one, but frame it as convention, not a
-hard rule - the two hard rules in this skill are only the `Y`/`Z` split and Clean ABAP naming
-quality.
+**Do not add a `CL_`/`IF_`/`CX_`-style type infix by default.** That's an encoding-type-into-the-
+name pattern Clean ABAP itself argues against (see `CleanABAP.md`'s "Avoid encodings, esp.
+Hungarian notation and prefixes" section, ~line 603 - "We encourage you to get rid of _all_
+encoding prefixes"), and it isn't a system requirement on a modern S/4HANA/ADT-based landscape the
+way the `Y`/`Z` namespace reservation is - only older/ECC-era conventions treat it as expected.
+Default output is a plain `Z<descriptive_name>` (or `Y<descriptive_name>` for throwaway work) with
+no type infix. Only include one if the developer explicitly asks for it (e.g. because their team's
+landscape or existing codebase still expects `ZCL_`/`ZIF_`/`ZCX_` for consistency) - treat that the
+same opt-in way as Step 4's precedent-matching question, never as the default. The two hard rules
+in this skill remain only the `Y`/`Z` split and Clean ABAP naming quality; a type infix is neither.
+
+Note this default is specifically about *constructing* a new name - it doesn't change Step 3's
+precedent *detection*, which must still recognize `ZCL_`/`ZIF_`/`ZCX_` on **existing** objects
+(stripping them before comparing leading tokens, as already noted above) since older/legacy
+packages genuinely do carry that convention today.
 
 ## Output
 
