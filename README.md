@@ -147,6 +147,24 @@ Per-system `mode`:
 `allowPackages`/`denyPackages` (prefix match, e.g. `"Z*"`) and `allowObjectTypes` further narrow
 Tier B/C calls within any mode, and are checked before any confirmation prompt.
 
+## Tool verification status
+
+Every operation `sap-adt-client` implements has fixture-based unit tests, but this project's own
+history shows that isn't sufficient by itself — several operations passed every fixture test while
+being structurally wrong against a real system (wrong endpoint, wrong `Accept` header, wrong
+request/response shape). Treat this table as the actual trust level, not the test suite:
+
+| Status | Tools |
+|---|---|
+| **Live-verified** | discovery, search, DDIC metadata + table contents (with `sqlQuery` filter), usage references, package contents, revisions, transport info/create, ATC run/worklist, syntax check, code completion, object source read/write, object create/lock/unlock/activate/delete, traces list |
+| **Draft / unverified** | `adt_debugger_*` (attach/breakpoints/variables/set-variable-value) — no live test rig exists for this; attaching a debugger needs an actual running ABAP process to pause, which nothing in this MCP triggers on its own. `adt_git_*` (repos/pull/push) — needs an existing abapGit-linked repository to test against; none was available during this project's live-testing pass. |
+
+Draft-status tools are still guardrail-gated and reachable, but treat a failure from one of them as
+at least as likely to be a real protocol bug in `sap-adt-client` as a problem with your call - file
+an issue (or fix it the same way this project's history shows: read the real HTTP response,
+compare against `abap-adt-api`'s implementation of the same call for protocol understanding
+without depending on it, live-verify the fix) rather than assuming it's user error.
+
 ## Troubleshooting
 
 Every ADT failure and every guardrail denial comes back as tool response text with enough detail
