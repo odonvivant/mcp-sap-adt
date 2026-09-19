@@ -32,9 +32,6 @@ system including a `read-only`-mode one.
 4. **Get its package context**: `adt_package_contents` for the package the object lives in (read
    from the search/source result's package field), so the report can note what else lives
    alongside it - useful for judging whether it's an isolated utility or part of a larger unit.
-   **Known limitation**: `adt_package_contents` is currently confirmed broken (the underlying ADT
-   nodestructure call's exact drill-down parameters aren't resolved yet) - if it errors, skip this
-   step and say so in the report rather than failing the whole dossier over it.
 
 5. **Get its recent history**: `adt_revisions` for the same `objectUri` - flag if it's changed
    recently (a volatile object is riskier to depend on for a migration decision than a stable one

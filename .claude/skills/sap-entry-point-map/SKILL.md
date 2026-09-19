@@ -4,12 +4,6 @@ description: Given an entry point (a transaction code, or a report/program/class
 allowed-tools: adt_search, adt_object_source_read, adt_usage_references, adt_ddic_element, adt_package_contents, adt_ddic_table_contents, adt_transport_info, adt_transport_create
 ---
 
-**Known limitation**: `adt_package_contents` is currently confirmed broken (the underlying ADT
-nodestructure call's exact drill-down parameters aren't resolved yet). This skill's crawl doesn't
-depend on it for correctness - dependencies are found by reading source, not by browsing packages
-- so proceed without it; only mention it if the user specifically asked for package-level context
-alongside the dependency map.
-
 Given one entry point, produce the minimum set of **custom** (`Z*`/`Y*`) objects a migration needs
 to carry along with it - not a full dependency graph into standard SAP code, which would be
 enormous and isn't what a transport-scoping exercise needs.

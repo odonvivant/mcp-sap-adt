@@ -16,11 +16,7 @@ ATC check variant name.
 1. **Enumerate the scope**: `adt_package_contents` for a package, or `adt_search` for a name
    pattern, to get the concrete object URI list this scan will cover. Report the count before
    running anything expensive - if it's very large (hundreds of objects), confirm with the user
-   before proceeding rather than silently kicking off a huge check run. **Known limitation**:
-   `adt_package_contents` is currently confirmed broken - if scoping by package, fall back to
-   `adt_search` with a name pattern matching that package's typical namespace (ask the user for
-   one if it isn't obvious) and say plainly that the scope is name-pattern-based, not a verified
-   full package listing, until that tool is fixed.
+   before proceeding rather than silently kicking off a huge check run.
 
 2. **Determine the check variant**. ATC variant names are landscape-specific (a common one is
    something like `S4HANA_READINESS` or a customer-defined variant for Clean Core) - if the user
