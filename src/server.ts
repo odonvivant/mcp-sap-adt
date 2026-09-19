@@ -12,17 +12,74 @@ import { allTools } from './tools';
 const SERVER_NAME = 'mcp-sap-adt';
 const SERVER_VERSION = '0.1.0';
 
+/** Longest argument value rendered into a confirmation prompt. A full ABAP source buffer would
+ * otherwise push the identifying fields past whatever the client truncates at, leaving the human
+ * approving a prompt they can't actually read to the end of. */
+const MAX_ARG_CHARS = 240;
+
+/** Argument names that identify *what* a call touches, shown first and in this order. */
+const IDENTIFYING_ARGS = [
+  'objectUri',
+  'objectName',
+  'objectType',
+  'packageName',
+  'targetPackage',
+  'transportNumber',
+  'transport',
+  'newName',
+];
+
+function renderArgValue(value: unknown): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  if (text === undefined) return String(value);
+  if (text.length <= MAX_ARG_CHARS) return text;
+  return `${text.slice(0, MAX_ARG_CHARS)} ... [truncated, ${text.length} chars total]`;
+}
+
+/** Renders a call's arguments one-per-line with identifying fields first and every value length-
+ * capped, instead of a single raw JSON blob. Exported for testing. */
+export function formatArgsForConfirmation(args: Record<string, unknown>): string {
+  const names = Object.keys(args).filter((name) => name !== 'system');
+  const ordered = [
+    ...IDENTIFYING_ARGS.filter((name) => names.includes(name)),
+    ...names.filter((name) => !IDENTIFYING_ARGS.includes(name)).sort(),
+  ];
+  if (ordered.length === 0) return '  (no arguments)';
+  return ordered.map((name) => `  ${name}: ${renderArgValue(args[name])}`).join('\n');
+}
+
+/** Builds the human-facing confirmation text. Names the system's real URL and SAP client, not just
+ * its alias - one server commonly serves dev and prod at once, and "prd" vs "prd2" is too weak a
+ * distinguisher for someone about to approve a destructive call. Exported for testing. */
+export function buildConfirmationMessage(
+  summary: { toolName: string; scope: string; riskTier: unknown; args: Record<string, unknown> },
+  system?: { url: string; client: string },
+): string {
+  const target = system ? `${summary.scope} - ${system.url} (client ${system.client})` : summary.scope;
+  return [
+    `Confirm "${summary.toolName}" (risk tier ${String(summary.riskTier)})`,
+    `System: ${target}`,
+    'Arguments:',
+    formatArgsForConfirmation(summary.args),
+  ].join('\n');
+}
+
 /** Adapts the SDK's low-level elicitation API to `mcp-guardrails`' `ElicitationCapability`. Any
  * client that hasn't advertised the `elicitation` capability is treated as unsupported, so the
  * guardrail chain fails closed instead of attempting a request the client can't answer. */
-function buildElicitationCapability(mcpServer: McpServer): ElicitationCapability {
+function buildElicitationCapability(mcpServer: McpServer, systemRegistry: SystemRegistry): ElicitationCapability {
   return {
     isSupported: () => Boolean(mcpServer.server.getClientCapabilities()?.elicitation),
     elicit: async (summary) => {
+      let system: { url: string; client: string } | undefined;
+      try {
+        system = systemRegistry.getSystem(summary.scope);
+      } catch {
+        // An unknown alias never reaches here (ToolRegistry resolves it first); prompt without the
+        // URL rather than failing the confirmation outright.
+      }
       const result = await mcpServer.server.elicitInput({
-        message:
-          `Confirm "${summary.toolName}" on system "${summary.scope}" (risk tier ${String(summary.riskTier)})?\n` +
-          `Arguments: ${JSON.stringify(summary.args)}`,
+        message: buildConfirmationMessage(summary, system),
         requestedSchema: {
           type: 'object',
           properties: {
@@ -35,15 +92,21 @@ function buildElicitationCapability(mcpServer: McpServer): ElicitationCapability
           required: ['confirmed'],
         },
       });
-      return { action: result.action };
+      // `action: "accept"` only means the user submitted the form - the checkbox they submitted it
+      // with is what actually carries their answer. Anything other than an explicit `true` is a
+      // decline, so an unticked (or absent, or non-boolean) `confirmed` can never allow the call.
+      const confirmed = result.action === 'accept' && result.content?.confirmed === true;
+      return { action: confirmed ? 'accept' : 'decline' };
     },
   };
 }
 
-function logOpenModeCall(entry: GuardrailLogEntry): void {
+function logGuardrailDecision(entry: GuardrailLogEntry): void {
   // Stdout is reserved for the MCP JSON-RPC stream - all diagnostic/log output goes to stderr.
+  const denial = entry.denial ? ` denial=${entry.denial}` : '';
   console.error(
-    `[mcp-sap-adt] open-mode call: tool=${entry.toolName} system=${entry.system} tier=${entry.tier}`,
+    `[mcp-sap-adt] guardrail: tool=${entry.toolName} system=${entry.system} tier=${entry.tier} ` +
+      `mode=${entry.mode} decision=${entry.decision}${denial}`,
   );
 }
 
@@ -57,8 +120,8 @@ export function createServer(systemRegistry: SystemRegistry): { mcpServer: McpSe
   const gateway = new AdtGateway(systemRegistry);
   const guardrail = new AdtGuardrail(
     systemRegistry.listSystems(),
-    buildElicitationCapability(mcpServer),
-    logOpenModeCall,
+    buildElicitationCapability(mcpServer, systemRegistry),
+    logGuardrailDecision,
   );
   const toolRegistry = new ToolRegistry(gateway, systemRegistry, guardrail);
 

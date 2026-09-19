@@ -29,13 +29,31 @@ export interface ScopeDenial {
   reason: string;
 }
 
+/** `/CUSTOMER/ZFI_CORE` -> `ZFI_CORE`. A namespaced ABAP package carries the customer's reserved
+ * `/NAME/` prefix in front of the name a `"Z*"` rule is written against, so a prefix with no
+ * namespace of its own is also tried against the de-namespaced name. */
+const NAMESPACE = /^\/[^/]+\/(.+)$/;
+
+function stripNamespace(value: string): string | undefined {
+  return NAMESPACE.exec(value)?.[1];
+}
+
 function normalizePrefix(prefix: string): string {
-  return prefix.endsWith('*') ? prefix.slice(0, -1) : prefix;
+  const trimmed = prefix.trim();
+  return (trimmed.endsWith('*') ? trimmed.slice(0, -1) : trimmed).toUpperCase();
 }
 
 function matchesAnyPrefix(value: string, prefixes: string[]): boolean {
-  const upper = value.toUpperCase();
-  return prefixes.some((prefix) => upper.startsWith(normalizePrefix(prefix).toUpperCase()));
+  const upper = value.trim().toUpperCase();
+  const withoutNamespace = stripNamespace(upper);
+  return prefixes.some((raw) => {
+    const prefix = normalizePrefix(raw);
+    if (prefix === '') return false;
+    if (upper.startsWith(prefix)) return true;
+    // Only a prefix that isn't itself namespaced falls back to the de-namespaced name - otherwise
+    // `"/CUSTOMER/Z*"` would reduce to `"/CUSTOMER/Z"` vs `"ZFI_CORE"` and match the wrong package.
+    return withoutNamespace !== undefined && !prefix.startsWith('/') && withoutNamespace.startsWith(prefix);
+  });
 }
 
 /**

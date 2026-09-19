@@ -1,23 +1,42 @@
 #!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline/promises';
 import { systemsFileSchema, SYSTEM_MODES, type SystemsFile, type SystemEntry } from '../src/config/SystemRegistry';
 
+/** Stream shape `promptSecret` needs from `process.stdin` - injectable so tests can drive it with
+ * a simulated TTY. */
+export interface SecretInput extends NodeJS.EventEmitter {
+  isTTY?: boolean;
+  isRaw?: boolean;
+  setRawMode?(mode: boolean): unknown;
+  resume(): unknown;
+}
+
 /** Reads a line of input without echoing it to the terminal (password/passphrase prompts). Falls
  * back to a plain (readline) read when stdin isn't a TTY - e.g. piped test input, where there is
  * no terminal to leak the value onto in the first place. Never writes the collected value
- * anywhere; only `\n` is written back to the terminal once the user presses Enter. */
-export async function promptSecret(rl: readline.Interface, query: string): Promise<string> {
-  const stdin = process.stdin;
-  if (!stdin.isTTY) {
+ * anywhere; only `\n` is written back to the terminal once the user presses Enter.
+ *
+ * Relies on `rl` having been created with `terminal: false` (see `createWizardInterface`): raw
+ * mode only silences the OS-level echo, not readline's own. */
+export async function promptSecret(
+  rl: readline.Interface,
+  query: string,
+  stdin: SecretInput = process.stdin,
+  stdout: { write(chunk: string): unknown } = process.stdout,
+): Promise<string> {
+  if (!stdin.isTTY || !stdin.setRawMode) {
     return rl.question(query);
   }
 
-  process.stdout.write(query);
+  stdout.write(query);
   const wasRaw = stdin.isRaw;
   stdin.setRawMode(true);
   stdin.resume();
+  const restoreRawMode = (): void => void stdin.setRawMode?.(Boolean(wasRaw));
 
   return new Promise<string>((resolve) => {
     let input = '';
@@ -28,14 +47,15 @@ export async function promptSecret(rl: readline.Interface, query: string): Promi
       for (const char of chunk.toString('utf8')) {
         if (char === '\n' || char === '\r') {
           stdin.removeListener('data', onData);
-          stdin.setRawMode(Boolean(wasRaw));
-          process.stdout.write('\n');
+          restoreRawMode();
+          stdout.write('\n');
           resolve(input);
           return;
         }
         if (char === '') {
           // Ctrl+C
-          process.stdout.write('\n');
+          restoreRawMode();
+          stdout.write('\n');
           process.exit(130);
         }
         if (char === '' || char === '\b') {
@@ -133,14 +153,69 @@ export async function runWizard(rl: readline.Interface): Promise<SystemsFile> {
   return systemsFileSchema.parse(systems);
 }
 
-export function writeSystemsFile(filePath: string, data: SystemsFile): void {
+/** Runs an executable directly (no shell), so arguments are passed as an argv array and can never
+ * be reinterpreted as shell syntax. */
+export type CommandRunner = (file: string, args: string[]) => void;
+
+const runCommand: CommandRunner = (file, args) => {
+  execFileSync(file, args, { stdio: 'pipe' });
+};
+
+/**
+ * Removes inherited ACLs from `filePath` and grants full control to the current user only.
+ *
+ * `fs.writeFileSync`'s `mode` is a no-op on Windows, so a freshly written `systems.json` otherwise
+ * inherits the parent directory's ACL - typically `BUILTIN\Users:(RX)` plus
+ * `Authenticated Users:(M)`, letting any local account read the plaintext SAP password and rewrite
+ * the file to repoint a system alias or relax its `mode`.
+ *
+ * Returns the failure message if the file could not be restricted, `undefined` on success.
+ */
+export function restrictToCurrentUserWin32(filePath: string, run: CommandRunner = runCommand): string | undefined {
+  const { username } = os.userInfo();
+  const domain = process.env.USERDOMAIN;
+  const principal = domain ? `${domain}\\${username}` : username;
+  try {
+    run('icacls', [filePath, '/inheritance:r', '/grant:r', `${principal}:F`]);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+export function writeSystemsFile(filePath: string, data: SystemsFile, run: CommandRunner = runCommand): void {
   const json = JSON.stringify(data, null, 2);
-  const options: fs.WriteFileOptions = process.platform === 'win32' ? {} : { mode: 0o600 };
-  fs.writeFileSync(filePath, json, options);
+  if (process.platform !== 'win32') {
+    fs.writeFileSync(filePath, json, { mode: 0o600 });
+    return;
+  }
+
+  fs.writeFileSync(filePath, json);
+  const failure = restrictToCurrentUserWin32(filePath, run);
+  if (failure) {
+    console.error(
+      `\n!! WARNING: could not restrict permissions on ${filePath} (${failure}).\n` +
+        '!! It contains your SAP credentials in plain text and may currently be readable and\n' +
+        '!! writable by every local account. Fix it manually before using this server, e.g.:\n' +
+        `!!   icacls "${filePath}" /inheritance:r /grant:r "%USERDOMAIN%\\%USERNAME%":F\n`,
+    );
+  }
+}
+
+/** Creates the wizard's readline interface with `terminal: false`. With a terminal-mode interface,
+ * readline echoes every keystroke to `output` itself - independently of the raw mode
+ * `promptSecret` sets - so passwords and passphrases end up on screen. Prompts written via
+ * `question()` still appear, and a real TTY still echoes ordinary (non-raw) input at the OS level.
+ * Exported for testing. */
+export function createWizardInterface(
+  input: NodeJS.ReadableStream = process.stdin,
+  output: NodeJS.WritableStream = process.stdout,
+): readline.Interface {
+  return readline.createInterface({ input, output, terminal: false });
 }
 
 async function main(): Promise<void> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = createWizardInterface();
   try {
     console.log('mcp-sap-adt setup - configure one or more SAP systems (see README for details).\n');
     const systems = await runWizard(rl);

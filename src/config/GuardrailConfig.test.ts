@@ -62,3 +62,40 @@ describe('checkObjectScope', () => {
     expect(denial).toBeUndefined();
   });
 });
+
+describe('checkObjectScope - SAP namespace prefixes', () => {
+  it('denies a namespaced package with a plain "Z*" deny rule', () => {
+    const denial = checkObjectScope(system({ denyPackages: ['Z*'] }), { packageName: '/CUSTOMER/ZFI_CORE' });
+    expect(denial?.reason).toMatch(/denyPackages/);
+  });
+
+  it('still denies the non-namespaced form with the same rule', () => {
+    expect(checkObjectScope(system({ denyPackages: ['Z*'] }), { packageName: 'ZFI_CORE' })).toBeDefined();
+  });
+
+  it('is case-insensitive across the namespace too', () => {
+    expect(checkObjectScope(system({ denyPackages: ['z*'] }), { packageName: '/customer/zfi_core' })).toBeDefined();
+  });
+
+  it('does not let a namespaced package escape an allowPackages scope check', () => {
+    // "Y*" must still reject it - namespace normalization must not become a blanket pass.
+    const denial = checkObjectScope(system({ allowPackages: ['Y*'] }), { packageName: '/CUSTOMER/ZFI_CORE' });
+    expect(denial?.reason).toMatch(/allowPackages/);
+  });
+
+  it('keeps a namespaced rule scoped to its own namespace', () => {
+    const sys = system({ denyPackages: ['/CUSTOMER/Z*'] });
+    expect(checkObjectScope(sys, { packageName: '/CUSTOMER/ZFI_CORE' })).toBeDefined();
+    // Must not be reduced to a bare "Z" and swallow every other namespace / plain Z package.
+    expect(checkObjectScope(sys, { packageName: '/OTHER/ZFI_CORE' })).toBeUndefined();
+    expect(checkObjectScope(sys, { packageName: 'ZFI_CORE' })).toBeUndefined();
+  });
+
+  it('trims whitespace around a configured prefix', () => {
+    expect(checkObjectScope(system({ denyPackages: ['  Z*  '] }), { packageName: 'Z_LEGACY' })).toBeDefined();
+  });
+
+  it('trims whitespace around the package argument', () => {
+    expect(checkObjectScope(system({ denyPackages: ['Z*'] }), { packageName: ' Z_LEGACY ' })).toBeDefined();
+  });
+});
