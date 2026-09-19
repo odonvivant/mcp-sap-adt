@@ -53,7 +53,7 @@ const cases: Case[] = [
     name: 'adt_ddic_table_contents',
     args: { system: 'dev', tableName: 'SFLIGHT' },
     gatewayMethod: 'ddicTableContents',
-    expectedGatewayArgs: { tableName: 'SFLIGHT', rowLimit: undefined },
+    expectedGatewayArgs: { tableName: 'SFLIGHT', rowLimit: undefined, sqlQuery: undefined },
     resultValue: { columns: [], rows: [] },
   },
   {

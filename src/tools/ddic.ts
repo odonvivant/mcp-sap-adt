@@ -22,6 +22,13 @@ const tableContentsInputSchema = z
     system: z.string().min(1),
     tableName: z.string().min(1),
     rowLimit: z.number().int().positive().max(10000).optional(),
+    sqlQuery: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Optional Open SQL WHERE-clause filter (e.g. \"TCODE = 'SE38'\"). Without it, a large table only returns its first rowLimit rows in whatever order the system returns them - not useful for finding one specific row.",
+      ),
   })
   .strict();
 
@@ -29,10 +36,11 @@ const tableContentsInputSchema = z
  * read, this can expose application data (PII, financial records) - not Tier A. */
 export const ddicTableContentsTool: Tool<z.infer<typeof tableContentsInputSchema>> = {
   name: 'adt_ddic_table_contents',
-  description: "Queries a database table's contents, up to rowLimit rows (default 100).",
+  description:
+    "Queries a database table's contents, up to rowLimit rows (default 100), optionally filtered by a sqlQuery WHERE clause.",
   inputSchema: tableContentsInputSchema,
   execute: (gateway, args) =>
-    gateway.ddicTableContents(args.system, { tableName: args.tableName, rowLimit: args.rowLimit }),
+    gateway.ddicTableContents(args.system, { tableName: args.tableName, rowLimit: args.rowLimit, sqlQuery: args.sqlQuery }),
 };
 
 export const ddicTools = [ddicElementTool, ddicTableContentsTool];

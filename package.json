@@ -23,7 +23,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "mcp-guardrails": "git+https://github.com/odonvivant/mcp-guardrails.git#v0.1.0",
-    "sap-adt-client": "git+https://github.com/odonvivant/sap-adt-client.git#v0.2.0",
+    "sap-adt-client": "git+https://github.com/odonvivant/sap-adt-client.git#v0.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

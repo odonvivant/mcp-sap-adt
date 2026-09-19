@@ -52,7 +52,7 @@ export interface IAdtGateway {
   ): Promise<{ name: string; fields: unknown[] }>;
   ddicTableContents(
     system: string,
-    args: { tableName: string; rowLimit?: number },
+    args: { tableName: string; rowLimit?: number; sqlQuery?: string },
   ): Promise<{ columns: string[]; rows: Array<Record<string, string>> }>;
 
   usageReferences(system: string, args: { objectUri: string }): Promise<AdtObjectRef[]>;
