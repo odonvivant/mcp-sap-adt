@@ -4,7 +4,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline/promises';
-import { systemsFileSchema, SYSTEM_MODES, type SystemsFile, type SystemEntry } from '../src/config/SystemRegistry';
+import {
+  systemsFileSchema,
+  SYSTEM_MODES,
+  type SystemsFile,
+  type SystemEntry,
+  type SystemMode,
+} from '../src/config/SystemRegistry';
 
 /** Stream shape `promptSecret` needs from `process.stdin` - injectable so tests can drive it with
  * a simulated TTY. */
@@ -94,28 +100,97 @@ async function promptList(rl: readline.Interface, query: string): Promise<string
     .filter((entry) => entry.length > 0);
 }
 
+const ENV_REF_HINT =
+  'or "env:VAR_NAME" to keep it out of systems.json and read it from that environment variable at startup';
+
+/** Confirms back that an `env:` reference was understood, without ever printing a literal secret -
+ * only the variable name, which is not one. */
+function noteEnvRef(label: string, value: string): void {
+  if (!value.startsWith('env:') || value.length <= 'env:'.length) return;
+  console.log(`  ${label} stored as a reference to $${value.slice('env:'.length)}, read at startup.`);
+}
+
+/** A hostname containing `prd`/`prod` is a *hint* that this is production, nothing more: plenty of
+ * production systems are named something else entirely, and a throwaway sandbox can happily be
+ * called `prodsim`. It only strengthens the wording of the `open`-mode warning - it never decides
+ * anything, and a `false` here must never be read as "this is not production". */
+function looksLikeProduction(url: string): boolean {
+  try {
+    return /prd|prod/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Gate on `open` mode, which disables every human-in-the-loop confirmation for a system. Returns
+ * the mode to actually use - `guarded` unless the user deliberately re-types "open". */
+async function confirmOpenMode(
+  rl: readline.Interface,
+  url: string,
+  tlsVerificationDisabled: boolean,
+): Promise<SystemMode> {
+  if (tlsVerificationDisabled) {
+    console.log(
+      '\n  Refusing "open" here: TLS certificate verification is turned off for this system.\n' +
+        '  Together those mean unattended destructive calls (delete object, overwrite source,\n' +
+        '  release transport) over a connection anyone who can answer for the hostname is able to\n' +
+        '  intercept - and with basic auth, intercepting it also hands them the SAP password.\n' +
+        '  Change one of the two: re-run and answer "ca" (or "yes") to the TLS question to keep\n' +
+        '  verification on, or leave this system on "guarded"/"read-only".\n' +
+        '  Using "guarded" for this system.',
+    );
+    return 'guarded';
+  }
+
+  console.log(
+    '\n  "open" means no confirmation is ever requested for this system: the model may delete\n' +
+      '  objects, overwrite source and release transports on it with no human in the loop.' +
+      (looksLikeProduction(url) ? `\n  The hostname in ${url} looks like a PRODUCTION system.` : ''),
+  );
+  const answer = (await rl.question('  Type "open" to confirm (anything else keeps "guarded"): ')).trim().toLowerCase();
+  if (answer === 'open') return 'open';
+  console.log('  Not confirmed - using "guarded".');
+  return 'guarded';
+}
+
 async function promptOneSystem(rl: readline.Interface): Promise<[string, SystemEntry]> {
   const alias = (await rl.question('System alias (e.g. dev, qas, prd): ')).trim();
   const url = (await rl.question('Base URL (e.g. https://host:44300): ')).trim();
   const client = (await rl.question('SAP client (e.g. 100): ')).trim();
   const authType = await promptChoice(rl, 'Auth type', ['basic', 'cert'] as const, 'basic');
 
-  const verifyChoice = await promptChoice(
-    rl,
-    'Verify TLS certificate? (answer "no" only for a dev/test system with a self-signed certificate)',
-    ['yes', 'no'] as const,
-    'yes',
+  console.log(
+    '\nTLS certificate verification:\n' +
+      '  yes - verify normally (a publicly-trusted or corporate-CA certificate)\n' +
+      '  ca  - verify against a CA file you supply: the supported way to accept a self-signed or\n' +
+      '        internally-issued SAP certificate, with verification still on\n' +
+      '  no  - do not verify at all (discouraged - anyone able to answer for this hostname can\n' +
+      '        present any certificate, and basic auth sends the SAP password on every request)',
   );
-  const rejectUnauthorized = verifyChoice === 'yes' ? undefined : false;
+  const verifyChoice = await promptChoice(rl, 'Verify TLS certificate?', ['yes', 'ca', 'no'] as const, 'yes');
+  const rejectUnauthorized = verifyChoice === 'no' ? false : undefined;
+  if (verifyChoice === 'ca') {
+    const caPath = (await rl.question('Path to the CA certificate/bundle (PEM): ')).trim();
+    // sap-adt-client's BasicAuthStrategy takes a `caPath`, but systems.json cannot carry one yet
+    // (SystemRegistry's auth schema is strict and has no such field), so point at Node's own
+    // extra-CA hook instead - it adds this CA to the trusted roots with verification left on.
+    console.log(
+      '  Keeping verification on. systems.json has no CA field yet, so trust this CA by setting\n' +
+        `  NODE_EXTRA_CA_CERTS=${caPath}\n` +
+        '  in the environment that launches the server (e.g. the MCP client\'s "env" block).',
+    );
+  }
 
   let auth: SystemEntry['auth'];
   if (authType === 'basic') {
     const user = (await rl.question('Username: ')).trim();
-    const password = await promptSecret(rl, 'Password: ');
+    const password = await promptSecret(rl, `Password (${ENV_REF_HINT}): `);
+    noteEnvRef('Password', password);
     auth = { type: 'basic', user, password, rejectUnauthorized };
   } else {
     const certKind = await promptChoice(rl, 'Certificate form', ['pfx', 'keypair'] as const, 'pfx');
-    const passphrase = await promptSecret(rl, 'Passphrase (blank if none): ');
+    const passphrase = await promptSecret(rl, `Passphrase (blank if none, ${ENV_REF_HINT}): `);
+    noteEnvRef('Passphrase', passphrase);
     if (certKind === 'pfx') {
       const pfx = (await rl.question('Path to .pfx bundle: ')).trim();
       auth = { type: 'cert', pfx, passphrase: passphrase || undefined, rejectUnauthorized };
@@ -126,7 +201,9 @@ async function promptOneSystem(rl: readline.Interface): Promise<[string, SystemE
     }
   }
 
-  const mode = await promptChoice(rl, 'Guardrail mode', SYSTEM_MODES, 'guarded');
+  const chosenMode = await promptChoice(rl, 'Guardrail mode', SYSTEM_MODES, 'guarded');
+  const mode =
+    chosenMode === 'open' ? await confirmOpenMode(rl, url, rejectUnauthorized === false) : chosenMode;
   const allowPackages = await promptList(rl, 'Allowed package prefixes (e.g. Z*)');
   const denyPackages = await promptList(rl, 'Denied package prefixes');
   const allowObjectTypes = await promptList(rl, 'Allowed object types (e.g. CLAS/OC)');
