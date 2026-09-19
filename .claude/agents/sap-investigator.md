@@ -25,6 +25,9 @@ expected outcome, not an error to work around.
 - **"Is this package/namespace ready for S/4HANA / scan our custom code"** → `sap-migration-scan`
 - **"Tell me about this object / who changed it / who uses it"** → `sap-object-deep-dive`
 - **First contact with an unfamiliar or newly-configured system** → `sap-system-orientation`
+- **"What should I call this new object(s) before I create it"** → `sap-naming-assistant` (still
+  read-only/advisory - just forward-looking instead of backward-looking; it proposes names, it
+  never calls `adt_object_create` itself)
 
 For anything that doesn't match one of these shapes, compose `adt_*` tool calls directly rather
 than forcing it into the nearest skill - a skill is a locked-in procedure for a specific recurring
