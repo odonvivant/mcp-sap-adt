@@ -65,6 +65,14 @@ function matchesAnyPrefix(value: string, prefixes: string[]): boolean {
  * Looks at `args.packageName` or `args.targetPackage` for package scoping, and `args.objectType`
  * for object-type scoping; a tool whose args carry neither is unaffected by scope config.
  */
+/** True when this system configures any package/object-type scope at all - i.e. when it is worth
+ * resolving an object's real identity before deciding, and unsafe to skip the check. */
+export function hasScopeConfig(system: ResolvedSystem): boolean {
+  return Boolean(
+    system.denyPackages?.length || system.allowPackages?.length || system.allowObjectTypes?.length,
+  );
+}
+
 export function checkObjectScope(
   system: ResolvedSystem,
   args: Record<string, unknown>,

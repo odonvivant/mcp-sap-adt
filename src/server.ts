@@ -122,6 +122,9 @@ export function createServer(systemRegistry: SystemRegistry): { mcpServer: McpSe
     systemRegistry.listSystems(),
     buildElicitationCapability(mcpServer, systemRegistry),
     logGuardrailDecision,
+    // Lets the guardrail check an object's *real* package/type against the scope config instead
+    // of the caller-supplied arguments, which are never sent to SAP and so prove nothing.
+    (systemAlias, objectUri) => gateway.objectMetadata(systemAlias, { objectUri }),
   );
   const toolRegistry = new ToolRegistry(gateway, systemRegistry, guardrail);
 

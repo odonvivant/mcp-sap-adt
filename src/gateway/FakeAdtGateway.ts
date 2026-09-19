@@ -91,6 +91,10 @@ export class FakeAdtGateway implements IAdtGateway {
   createObject(system: string, args: unknown) {
     return this.invoke('createObject', system, args);
   }
+  objectMetadata(system: string, args: unknown) {
+    return this.invoke('objectMetadata', system, args);
+  }
+
   deleteObject(system: string, args: unknown) {
     return this.invoke('deleteObject', system, args);
   }

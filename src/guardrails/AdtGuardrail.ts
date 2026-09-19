@@ -6,7 +6,7 @@ import {
   type ElicitationCapability,
 } from 'mcp-guardrails';
 import type { ResolvedSystem, SystemMode } from '../config/SystemRegistry';
-import { checkObjectScope, toConfigPolicyConfig } from '../config/GuardrailConfig';
+import { checkObjectScope, hasScopeConfig, toConfigPolicyConfig } from '../config/GuardrailConfig';
 import { compareTiers, type RiskTier } from './AdtRiskTiers';
 
 export type GuardrailDenialCategory = 'read-only' | 'scope' | 'declined-confirmation' | 'no-elicitation-support';
@@ -46,14 +46,31 @@ export interface GuardrailLogEntry {
  * to classify the reason and again inside `CompositeGuardrail.evaluate` for the actual decision
  * is safe - it never causes the live user-facing elicitation prompt to fire twice.
  */
+
+/**
+ * Looks up what an object *actually* is, from the system rather than from the call's arguments.
+ * Injected so this class stays free of ADT I/O and stays unit-testable.
+ */
+export type ObjectScopeResolver = (
+  systemAlias: string,
+  objectUri: string,
+) => Promise<{ packageName?: string; objectType?: string }>;
+
+const SCOPE_CACHE_TTL_MS = 5 * 60 * 1000;
+const SCOPE_CACHE_MAX = 500;
+
 export class AdtGuardrail {
   private readonly configPolicy: ConfigPolicy<RiskTier>;
   private readonly composite: CompositeGuardrail<RiskTier>;
+  private readonly scopeCache = new Map<string, { value: { packageName?: string; objectType?: string }; at: number }>();
 
   constructor(
     systems: ResolvedSystem[],
     private readonly elicitationCapability: ElicitationCapability,
     private readonly onLog: (entry: GuardrailLogEntry) => void = () => {},
+    /** Omitted only in tests that configure no package/object-type scope. When a system *does*
+     * configure scope and this is absent, a scoped call is denied rather than waved through. */
+    private readonly resolveObject?: ObjectScopeResolver,
   ) {
     this.configPolicy = new ConfigPolicy(toConfigPolicyConfig(systems), compareTiers);
     this.composite = new CompositeGuardrail(this.configPolicy, new ElicitationPolicy(elicitationCapability));
@@ -81,7 +98,41 @@ export class AdtGuardrail {
       return outcome;
     };
 
-    const scopeDenial = checkObjectScope(system, args);
+    let scopeArgs = args;
+    if (hasScopeConfig(system) && typeof args.objectUri === 'string' && args.objectUri.length > 0) {
+      // `packageName`/`objectType` arrive as optional arguments that the *caller* supplies and
+      // that are never sent to SAP - so as scope input they are a self-declaration, and omitting
+      // `packageName` used to skip the denyPackages check entirely. Ask the system instead.
+      //
+      // Only objectUri-bearing calls need this. `adt_object_create` has no object to look up yet,
+      // and there its `targetPackage`/`objectType` args *are* authoritative: they are exactly what
+      // gets sent to SAP, so a lie in them is a lie to SAP too, not a way around the guardrail.
+      try {
+        const resolved = await this.resolveScope(system.alias, args.objectUri);
+        if (!resolved.packageName) {
+          throw new Error('the system did not report which package it belongs to');
+        }
+        scopeArgs = {
+          ...args,
+          packageName: resolved.packageName,
+          targetPackage: undefined,
+          objectType: resolved.objectType ?? args.objectType,
+        };
+      } catch (error) {
+        // Fail closed: unable to verify scope is not the same as in scope.
+        return audit({
+          allowed: false,
+          denial: {
+            category: 'scope',
+            reason:
+              `cannot verify the package of "${args.objectUri}" on system "${system.alias}", and that system configures ` +
+              `package/object-type scope, so the call is denied rather than assumed in scope (${(error as Error).message})`,
+          },
+        });
+      }
+    }
+
+    const scopeDenial = checkObjectScope(system, scopeArgs);
     if (scopeDenial) {
       return audit({ allowed: false, denial: { category: 'scope', reason: scopeDenial.reason } });
     }
@@ -119,5 +170,32 @@ export class AdtGuardrail {
       allowed: false,
       denial: { category: 'declined-confirmation', reason: 'confirmation was declined by the connected client' },
     });
+  }
+
+  /** Resolves an object's real package/type, memoized briefly so a burst of calls against the
+   * same object doesn't issue a lookup each time. Throws if no resolver is wired. */
+  private async resolveScope(
+    systemAlias: string,
+    objectUri: string,
+  ): Promise<{ packageName?: string; objectType?: string }> {
+    if (!this.resolveObject) {
+      throw new Error('no object resolver is configured for this guardrail');
+    }
+
+    const key = JSON.stringify([systemAlias, objectUri]);
+    const now = Date.now();
+    const cached = this.scopeCache.get(key);
+    if (cached && now - cached.at < SCOPE_CACHE_TTL_MS) {
+      return cached.value;
+    }
+
+    const value = await this.resolveObject(systemAlias, objectUri);
+
+    if (this.scopeCache.size >= SCOPE_CACHE_MAX) {
+      const oldest = this.scopeCache.keys().next().value;
+      if (oldest !== undefined) this.scopeCache.delete(oldest);
+    }
+    this.scopeCache.set(key, { value, at: now });
+    return value;
   }
 }

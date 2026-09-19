@@ -11,8 +11,13 @@ const basicAuthSchema = z
     type: z.literal('basic'),
     user: z.string().min(1),
     password: secretSchema,
-    /** Set `false` for a dev/test system with a self-signed certificate. Default `true`. */
+    /** Set `false` for a dev/test system with a self-signed certificate. Default `true`.
+     * Prefer `caPath`: basic auth sends a reversible password on every request, so disabling
+     * verification lets anyone able to answer for the hostname collect it. */
     rejectUnauthorized: z.boolean().optional(),
+    /** Path to a PEM CA bundle to trust for this system - the supported way to accept a
+     * self-signed or internally-issued certificate while keeping verification enabled. */
+    caPath: z.string().min(1).optional(),
   })
   .strict();
 
@@ -72,7 +77,7 @@ export type SystemEntry = z.infer<typeof systemEntrySchema>;
 export type SystemsFile = z.infer<typeof systemsFileSchema>;
 
 export type ResolvedAuth =
-  | { type: 'basic'; user: string; password: string; rejectUnauthorized?: boolean }
+  | { type: 'basic'; user: string; password: string; rejectUnauthorized?: boolean; caPath?: string }
   | { type: 'cert'; pfx: string; passphrase?: string; rejectUnauthorized?: boolean }
   | { type: 'cert'; cert: string; key: string; passphrase?: string; rejectUnauthorized?: boolean };
 
@@ -141,6 +146,7 @@ function resolveAuth(alias: string, auth: SystemEntry['auth']): ResolvedAuth {
       user: auth.user,
       password: resolveSecret(alias, 'auth.password', auth.password),
       rejectUnauthorized: auth.rejectUnauthorized,
+      caPath: auth.caPath,
     };
   }
   if ('pfx' in auth) {
@@ -162,7 +168,7 @@ function resolveAuth(alias: string, auth: SystemEntry['auth']): ResolvedAuth {
 
 function buildAuthStrategy(auth: ResolvedAuth): AdtAuth {
   if (auth.type === 'basic') {
-    return new BasicAuthStrategy(auth.user, auth.password, auth.rejectUnauthorized ?? true);
+    return new BasicAuthStrategy(auth.user, auth.password, auth.rejectUnauthorized ?? true, auth.caPath);
   }
   if ('pfx' in auth) {
     return new CertAuthStrategy({

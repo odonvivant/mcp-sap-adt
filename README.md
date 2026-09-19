@@ -32,7 +32,16 @@ npm install && npm run build && npm run setup
 ```
 
 `npm install` pulls `sap-adt-client` and `mcp-guardrails` as git dependencies — no npm-registry
-publish needed. `npm run setup` runs an interactive wizard that asks, per system: alias, base URL,
+publish needed. Note that npm may report `install scripts not yet covered by allowScripts` for
+`sap-adt-client`: its `prepare` build then does **not** run, and `node_modules/sap-adt-client/dist`
+can be left stale from a previous version. If you see type errors that blame the client for an API
+you can see in its source, approve that install script (or run `npm run build` inside a checkout of
+it) rather than assuming the mismatch is real.
+
+If your SAP system presents a self-signed or internally-issued certificate, set `caPath` on that
+system's `auth` to a PEM CA bundle rather than setting `rejectUnauthorized: false` — basic auth
+sends a reversible password on every request, so disabling verification hands it to anyone able to
+answer for the hostname. `npm run setup` runs an interactive wizard that asks, per system: alias, base URL,
 SAP client, auth type (username/password or client certificate), credentials/cert paths, and
 guardrail mode — then writes `systems.json` (git-ignored, never committed, never logged/echoed
 back). Add as many systems as you like in one run.
@@ -153,6 +162,27 @@ Tier B/C calls within any mode, and are checked before any confirmation prompt. 
 case-insensitive and namespace-aware: `"Z*"` matches `/CUSTOMER/ZFI_CORE` as well as `ZFI_CORE`,
 while a namespaced rule like `"/CUSTOMER/Z*"` matches only inside that namespace. A `*` is accepted
 only as the last character — `"Z*FI"` is rejected at startup rather than silently never matching.
+
+For a call that names an existing object, the package and object type are **resolved from the
+system**, not taken from the call's arguments: `packageName`/`objectType` are optional arguments
+the caller supplies and that are never sent to SAP, so as scope input they prove nothing — omitting
+`packageName` used to skip the `denyPackages` check entirely. If that lookup fails (object gone,
+system unreachable, no package reported), the call is **denied** rather than assumed in scope.
+Results are cached briefly, so a burst of calls against one object costs one lookup.
+
+`adt_object_create` is the exception, and deliberately: there is no object to look up yet, and its
+`targetPackage`/`objectType` are exactly what gets sent to SAP — a lie there is a lie to SAP too,
+not a way around the guardrail.
+
+Two limits worth stating plainly rather than leaving to be discovered:
+
+- **Tier A is not scope-checked.** Scope narrows Tier B/C only, so `adt_object_source_read`,
+  `adt_revisions` and friends still read any object the SAP user is authorized for, in every mode
+  including `read-only`. If bulk source exfiltration is part of your threat model, the boundary has
+  to be the connecting SAP user's own authorizations, not this config.
+- **The SAP user's authorizations are the real boundary** for everything readable —
+  `adt_ddic_table_contents` in particular can read any table that user is entitled to. Give the
+  connecting user only the authorizations the job needs.
 
 ## Tool verification status
 

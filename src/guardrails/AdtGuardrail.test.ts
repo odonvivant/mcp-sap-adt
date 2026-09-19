@@ -218,3 +218,132 @@ describe('AdtGuardrail audit log', () => {
     expect(Object.keys(logs[0]).sort()).toEqual(['decision', 'denial', 'mode', 'system', 'tier', 'toolName']);
   });
 });
+
+describe('AdtGuardrail - package scope is resolved from the system, not self-declared', () => {
+  const denySystem = () => system({ denyPackages: ['Z*'] });
+  const PROTECTED_URI = '/sap/bc/adt/oo/classes/zcl_fi_posting';
+
+  it('denies a delete in a denied package even though the caller declared no package at all', async () => {
+    // The bypass this closes: packageName is an optional argument the caller supplies and that is
+    // never sent to SAP, so omitting it used to skip the denyPackages check entirely.
+    const resolver = jest.fn().mockResolvedValue({ packageName: 'ZFI_CORE', objectType: 'CLAS/OC' });
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_delete', 'C', {
+      objectUri: PROTECTED_URI,
+      lockHandle: 'L1',
+    });
+
+    expect(outcome).toEqual({ allowed: false, denial: { category: 'scope', reason: expect.any(String) } });
+    expect(resolver).toHaveBeenCalledWith('dev', PROTECTED_URI);
+  });
+
+  it('denies it just the same when the caller declares an innocuous package', async () => {
+    const resolver = jest.fn().mockResolvedValue({ packageName: 'ZFI_CORE', objectType: 'CLAS/OC' });
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_delete', 'C', {
+      objectUri: PROTECTED_URI,
+      packageName: 'YTEST',
+      lockHandle: 'L1',
+    });
+
+    expect(outcome.allowed).toBe(false);
+  });
+
+  it('allows the call when the resolved package is genuinely outside the deny list', async () => {
+    const resolver = jest.fn().mockResolvedValue({ packageName: 'YTEST_SANDBOX', objectType: 'CLAS/OC' });
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_delete', 'C', {
+      objectUri: '/sap/bc/adt/oo/classes/ycl_scratch',
+      lockHandle: 'L1',
+    });
+
+    expect(outcome.allowed).toBe(true);
+  });
+
+  it('fails closed when the package cannot be resolved', async () => {
+    const resolver = jest.fn().mockRejectedValue(new Error('404 object not found'));
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_delete', 'C', {
+      objectUri: PROTECTED_URI,
+      lockHandle: 'L1',
+    });
+
+    expect(outcome).toMatchObject({ allowed: false, denial: { category: 'scope' } });
+  });
+
+  it('fails closed when the system reports no package for the object', async () => {
+    const resolver = jest.fn().mockResolvedValue({ objectType: 'CLAS/OC' });
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_delete', 'C', {
+      objectUri: PROTECTED_URI,
+      lockHandle: 'L1',
+    });
+
+    expect(outcome).toMatchObject({ allowed: false, denial: { category: 'scope' } });
+  });
+
+  it('fails closed when scope is configured but no resolver is wired at all', async () => {
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability());
+
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_delete', 'C', {
+      objectUri: PROTECTED_URI,
+      lockHandle: 'L1',
+    });
+
+    expect(outcome).toMatchObject({ allowed: false, denial: { category: 'scope' } });
+  });
+
+  it('enforces allowObjectTypes against the resolved type, which delete/write args never carry', async () => {
+    const resolver = jest.fn().mockResolvedValue({ packageName: 'YSANDBOX', objectType: 'TABL/DT' });
+    const scoped = system({ allowObjectTypes: ['CLAS/OC'] });
+    const guardrail = new AdtGuardrail([scoped], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(scoped, 'adt_object_delete', 'C', {
+      objectUri: '/sap/bc/adt/ddic/tables/ytab',
+      lockHandle: 'L1',
+    });
+
+    expect(outcome).toMatchObject({ allowed: false, denial: { category: 'scope' } });
+  });
+
+  it('does not resolve at all when the system configures no scope, so unscoped systems pay nothing', async () => {
+    const resolver = jest.fn();
+    const guardrail = new AdtGuardrail([system()], new FakeElicitationCapability(), () => {}, resolver);
+
+    const outcome = await guardrail.evaluate(system(), 'adt_object_delete', 'C', { objectUri: PROTECTED_URI });
+
+    expect(outcome.allowed).toBe(true);
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('trusts create arguments, which are sent to SAP and so cannot lie only to the guardrail', async () => {
+    const resolver = jest.fn();
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+
+    // No objectUri: the object does not exist yet, and targetPackage is what SAP itself receives.
+    const outcome = await guardrail.evaluate(denySystem(), 'adt_object_create', 'C', {
+      targetPackage: 'ZFI_CORE',
+      objectType: 'CLAS/OC',
+      name: 'ZCL_NEW',
+    });
+
+    expect(outcome).toMatchObject({ allowed: false, denial: { category: 'scope' } });
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('memoizes a resolution so a burst against one object issues a single lookup', async () => {
+    const resolver = jest.fn().mockResolvedValue({ packageName: 'YSANDBOX', objectType: 'CLAS/OC' });
+    const guardrail = new AdtGuardrail([denySystem()], new FakeElicitationCapability(), () => {}, resolver);
+    const args = { objectUri: '/sap/bc/adt/oo/classes/ycl_scratch', lockHandle: 'L1' };
+
+    await guardrail.evaluate(denySystem(), 'adt_object_lock', 'C', args);
+    await guardrail.evaluate(denySystem(), 'adt_object_source_write', 'C', args);
+
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+});

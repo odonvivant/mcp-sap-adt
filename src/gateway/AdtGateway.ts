@@ -142,6 +142,10 @@ export class AdtGateway implements IAdtGateway {
     return atc.atcWorklist(this.systems.getConnection(system), args);
   }
 
+  objectMetadata(system: string, args: Parameters<IAdtGateway['objectMetadata']>[1]) {
+    return objectManagement.objectMetadata(this.systems.getConnection(system), args);
+  }
+
   async renamePreview(system: string, args: Parameters<IAdtGateway['renamePreview']>[1]) {
     const connection = this.systems.getConnection(system);
     const evaluation = await refactor.renameEvaluate(connection, {

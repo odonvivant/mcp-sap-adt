@@ -93,6 +93,12 @@ export interface IAdtGateway {
       responsible?: string;
     },
   ): Promise<{ uri: string }>;
+  /** An object's real name/type/package as the system reports them - used by the guardrail to
+   * check scope against the truth rather than against caller-supplied arguments. */
+  objectMetadata(
+    system: string,
+    args: { objectUri: string },
+  ): Promise<{ name?: string; type?: string; packageName?: string }>;
   deleteObject(system: string, args: { objectUri: string; lockHandle: string }): Promise<void>;
   lockObject(system: string, args: { objectUri: string }): Promise<{ lockHandle: string }>;
   unlockObject(system: string, args: { objectUri: string; lockHandle: string }): Promise<void>;
