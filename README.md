@@ -156,7 +156,7 @@ request/response shape). Treat this table as the actual trust level, not the tes
 
 | Status | Tools |
 |---|---|
-| **Live-verified** | discovery, search, DDIC metadata + table contents (with `sqlQuery` filter), usage references, package contents, revisions, transport info/create, ATC run/worklist, syntax check, code completion, object source read/write, object create/lock/unlock/activate/delete, traces list |
+| **Live-verified** | discovery, search, DDIC metadata + table contents (with `sqlQuery` filter), usage references, package contents, revisions, transport info/create/**release**, ATC run/worklist, syntax check, code completion, object source read/write, object create/lock/unlock/activate/delete, traces list |
 | **Draft / unverified** | `adt_debugger_*` (attach/breakpoints/variables/set-variable-value) — no live test rig exists for this; attaching a debugger needs an actual running ABAP process to pause, which nothing in this MCP triggers on its own. `adt_git_*` (repos/pull/push) — needs an existing abapGit-linked repository to test against; none was available during this project's live-testing pass. |
 
 Draft-status tools are still guardrail-gated and reachable, but treat a failure from one of them as
