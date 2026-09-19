@@ -86,9 +86,9 @@ const cases: Case[] = [
   },
   {
     name: 'adt_transport_create',
-    args: { system: 'dev', description: 'desc', targetPackage: 'ZPKG' },
+    args: { system: 'dev', description: 'desc' },
     gatewayMethod: 'createTransport',
-    expectedGatewayArgs: { description: 'desc', targetPackage: 'ZPKG' },
+    expectedGatewayArgs: { description: 'desc', type: undefined },
     resultValue: { transportNumber: 'DEVK900001' },
   },
   {

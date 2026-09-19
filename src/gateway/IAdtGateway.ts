@@ -62,7 +62,7 @@ export interface IAdtGateway {
   transportInfo(system: string, args: { transportNumber: string }): Promise<unknown>;
   createTransport(
     system: string,
-    args: { description: string; targetPackage: string },
+    args: { description: string; type?: 'K' | 'W' },
   ): Promise<{ transportNumber: string }>;
   releaseTransport(system: string, args: { transportNumber: string }): Promise<void>;
 

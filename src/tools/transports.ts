@@ -8,10 +8,11 @@ const infoInputSchema = z
   })
   .strict();
 
-/** Tier A. Reads a transport request's contents: its tasks and the objects each task carries. */
+/** Tier A. Reads a transport request's contents: its description/owner/status, every object it
+ * carries, and its tasks. */
 export const transportInfoTool: Tool<z.infer<typeof infoInputSchema>> = {
   name: 'adt_transport_info',
-  description: "Reads a transport request's contents: its tasks and the objects each task contains.",
+  description: "Reads a transport request's description, objects, and tasks.",
   inputSchema: infoInputSchema,
   execute: (gateway, args) => gateway.transportInfo(args.system, { transportNumber: args.transportNumber }),
 };
@@ -20,17 +21,17 @@ const createInputSchema = z
   .object({
     system: z.string().min(1),
     description: z.string().min(1),
-    targetPackage: z.string().min(1),
+    type: z.enum(['K', 'W']).optional().describe("Request type. Default 'K' (Workbench request)."),
   })
   .strict();
 
-/** Tier B. Creates a new transport request/task - creates state, doesn't touch source. */
+/** Tier B. Creates a new transport request - creates state, doesn't touch source. A transport
+ * header has no "target package" - only individual objects added to it later carry one. */
 export const transportCreateTool: Tool<z.infer<typeof createInputSchema>> = {
   name: 'adt_transport_create',
-  description: 'Creates a new transport request/task for the given description and target package.',
+  description: 'Creates a new transport request for the given description (Workbench request by default).',
   inputSchema: createInputSchema,
-  execute: (gateway, args) =>
-    gateway.createTransport(args.system, { description: args.description, targetPackage: args.targetPackage }),
+  execute: (gateway, args) => gateway.createTransport(args.system, { description: args.description, type: args.type }),
 };
 
 const releaseInputSchema = z
