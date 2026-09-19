@@ -4,7 +4,13 @@ import type { Tool } from './Tool';
 const previewInputSchema = z
   .object({
     system: z.string().min(1),
-    objectUri: z.string().min(1),
+    objectUri: z
+      .string()
+      .min(1)
+      .describe("The object's source URI, including `/source/main` (e.g. `/sap/bc/adt/oo/classes/zcl_foo/source/main`)."),
+    line: z.number().int().positive().describe('1-based line of the identifier to rename.'),
+    startColumn: z.number().int().nonnegative().describe('0-based start column of the identifier.'),
+    endColumn: z.number().int().nonnegative().describe('0-based end column of the identifier.'),
     newName: z.string().min(1),
   })
   .strict();
@@ -12,9 +18,17 @@ const previewInputSchema = z
 /** Tier B. Previews a rename refactoring's affected locations without applying it. */
 export const refactorRenamePreviewTool: Tool<z.infer<typeof previewInputSchema>> = {
   name: 'adt_refactor_rename_preview',
-  description: 'Previews a rename refactoring: the affected locations, without applying the change.',
+  description:
+    'Previews a rename refactoring: the affected locations, without applying the change. ADT renames the identifier at a given source position, not a whole object - select it with line/startColumn/endColumn. Returns a previewId to pass to adt_refactor_rename_execute.',
   inputSchema: previewInputSchema,
-  execute: (gateway, args) => gateway.renamePreview(args.system, { objectUri: args.objectUri, newName: args.newName }),
+  execute: (gateway, args) =>
+    gateway.renamePreview(args.system, {
+      objectUri: args.objectUri,
+      line: args.line,
+      startColumn: args.startColumn,
+      endColumn: args.endColumn,
+      newName: args.newName,
+    }),
 };
 
 const executeInputSchema = z

@@ -17,8 +17,29 @@ import {
   codeCompletion,
   traces,
 } from 'sap-adt-client';
+import { randomUUID } from 'node:crypto';
 import type { SystemRegistry } from '../config/SystemRegistry';
 import type { IAdtGateway } from './IAdtGateway';
+
+/**
+ * A refactoring is a three-step ADT conversation (evaluate -> preview -> execute) where each step
+ * must echo the previous step's response back byte-for-byte: it carries server-issued tokens that
+ * are rejected if reserialized (see `sap-adt-client`'s `RefactorStepResult`). MCP tool calls are
+ * independent request/response pairs, so that blob has to live somewhere between the preview call
+ * and the execute call.
+ *
+ * It is kept here, behind a short opaque handle, rather than returned to the caller: handing a
+ * multi-kilobyte XML document to an LLM and trusting it to pass it back unaltered would fail the
+ * byte-exactness requirement, and would waste its context for no benefit.
+ */
+interface StoredPreview {
+  system: string;
+  preview: refactor.RefactorStepResult;
+  storedAt: number;
+}
+
+const PREVIEW_TTL_MS = 30 * 60 * 1000;
+const MAX_PREVIEWS = 50;
 
 /**
  * The real {@link IAdtGateway} implementation: resolves a `system` alias to its cached
@@ -28,6 +49,42 @@ import type { IAdtGateway } from './IAdtGateway';
  */
 export class AdtGateway implements IAdtGateway {
   constructor(private readonly systems: SystemRegistry) {}
+
+  private readonly previews = new Map<string, StoredPreview>();
+
+  private storePreview(system: string, preview: refactor.RefactorStepResult): string {
+    const now = Date.now();
+    for (const [id, entry] of this.previews) {
+      if (now - entry.storedAt > PREVIEW_TTL_MS) this.previews.delete(id);
+    }
+    // Map preserves insertion order, so the first key is the oldest.
+    while (this.previews.size >= MAX_PREVIEWS) {
+      const oldest = this.previews.keys().next().value;
+      if (oldest === undefined) break;
+      this.previews.delete(oldest);
+    }
+
+    const previewId = randomUUID();
+    this.previews.set(previewId, { system, preview, storedAt: now });
+    return previewId;
+  }
+
+  /** Consumes a stored preview: a preview is valid for exactly one execute. */
+  private takePreview(system: string, previewId: string): refactor.RefactorStepResult {
+    const entry = this.previews.get(previewId);
+    if (!entry) {
+      throw new Error(
+        `Unknown or expired previewId "${previewId}". Previews are single-use and expire after ${PREVIEW_TTL_MS / 60000} minutes - run the preview step again.`,
+      );
+    }
+    // A preview is bound to the system it was produced against; applying it elsewhere would push
+    // one system's refactoring into another.
+    if (entry.system !== system) {
+      throw new Error(`previewId "${previewId}" belongs to system "${entry.system}", not "${system}".`);
+    }
+    this.previews.delete(previewId);
+    return entry.preview;
+  }
 
   discovery(system: string) {
     return discovery.discovery(this.systems.getConnection(system));
@@ -85,12 +142,25 @@ export class AdtGateway implements IAdtGateway {
     return atc.atcWorklist(this.systems.getConnection(system), args);
   }
 
-  renamePreview(system: string, args: Parameters<IAdtGateway['renamePreview']>[1]) {
-    return refactor.renamePreview(this.systems.getConnection(system), args);
+  async renamePreview(system: string, args: Parameters<IAdtGateway['renamePreview']>[1]) {
+    const connection = this.systems.getConnection(system);
+    const evaluation = await refactor.renameEvaluate(connection, {
+      uri: args.objectUri,
+      line: args.line,
+      startColumn: args.startColumn,
+      endColumn: args.endColumn,
+    });
+    const preview = await refactor.renamePreview(connection, { evaluation, newName: args.newName });
+    return {
+      previewId: this.storePreview(system, preview),
+      affectedLocations: preview.affectedObjects,
+    };
   }
 
-  renameExecute(system: string, args: Parameters<IAdtGateway['renameExecute']>[1]) {
-    return refactor.renameExecute(this.systems.getConnection(system), args);
+  async renameExecute(system: string, args: Parameters<IAdtGateway['renameExecute']>[1]) {
+    const preview = this.takePreview(system, args.previewId);
+    const result = await refactor.renameExecute(this.systems.getConnection(system), { preview });
+    return { changedObjects: result.affectedObjects.map((object) => object.uri) };
   }
 
   runUnitTests(system: string, args: Parameters<IAdtGateway['runUnitTests']>[1]) {
@@ -181,12 +251,26 @@ export class AdtGateway implements IAdtGateway {
     return traces.tracesDelete(this.systems.getConnection(system), args);
   }
 
-  extractMethodPreview(system: string, args: Parameters<IAdtGateway['extractMethodPreview']>[1]) {
-    return refactor.extractMethodPreview(this.systems.getConnection(system), args);
+  async extractMethodPreview(system: string, args: Parameters<IAdtGateway['extractMethodPreview']>[1]) {
+    const connection = this.systems.getConnection(system);
+    const evaluation = await refactor.extractMethodEvaluate(connection, {
+      uri: args.objectUri,
+      range: args.range,
+    });
+    const preview = await refactor.extractMethodPreview(connection, {
+      evaluation,
+      methodName: args.methodName,
+    });
+    return {
+      previewId: this.storePreview(system, preview),
+      affectedLocations: preview.affectedObjects,
+    };
   }
 
-  extractMethodExecute(system: string, args: Parameters<IAdtGateway['extractMethodExecute']>[1]) {
-    return refactor.extractMethodExecute(this.systems.getConnection(system), args);
+  async extractMethodExecute(system: string, args: Parameters<IAdtGateway['extractMethodExecute']>[1]) {
+    const preview = this.takePreview(system, args.previewId);
+    const result = await refactor.extractMethodExecute(this.systems.getConnection(system), { preview });
+    return { changedObjects: result.affectedObjects.map((object) => object.uri) };
   }
 
   debuggerSetVariableValue(system: string, args: Parameters<IAdtGateway['debuggerSetVariableValue']>[1]) {

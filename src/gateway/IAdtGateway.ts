@@ -72,9 +72,11 @@ export interface IAdtGateway {
   ): Promise<{ worklistId: string }>;
   atcWorklist(system: string, args: { worklistId: string }): Promise<AtcObjectFindings[]>;
 
+  /** ADT renames the *identifier at a source position*, not a whole object, so the caller must say
+   * which identifier: `objectUri` includes `/source/main` and the line/column range selects it. */
   renamePreview(
     system: string,
-    args: { objectUri: string; newName: string },
+    args: { objectUri: string; line: number; startColumn: number; endColumn: number; newName: string },
   ): Promise<{ previewId: string; affectedLocations: unknown[] }>;
   renameExecute(system: string, args: { previewId: string }): Promise<{ changedObjects: string[] }>;
 

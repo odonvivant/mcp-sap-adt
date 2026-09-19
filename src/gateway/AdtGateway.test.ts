@@ -10,7 +10,12 @@ jest.mock('sap-adt-client', () => {
     search: { search: jest.fn() },
     traces: { ...actual.traces, tracesList: jest.fn(), tracesDelete: jest.fn() },
     syntaxCheck: { syntaxCheck: jest.fn() },
-    refactor: { ...actual.refactor, extractMethodPreview: jest.fn() },
+    refactor: {
+      ...actual.refactor,
+      extractMethodEvaluate: jest.fn(),
+      extractMethodPreview: jest.fn(),
+      extractMethodExecute: jest.fn(),
+    },
     debuggerOps: { ...actual.debuggerOps, setVariableValue: jest.fn() },
   };
 });
@@ -85,15 +90,52 @@ describe('AdtGateway (real implementation wired to sap-adt-client operations/)',
     expect(traces.tracesDelete).toHaveBeenCalledWith(systems.getConnection('dev'), { uri: '/traces/T1' });
   });
 
-  it('wires extractMethodPreview() to sap-adt-client refactor.extractMethodPreview', async () => {
-    (refactor.extractMethodPreview as jest.Mock).mockResolvedValue({ previewId: 'P1', affectedLocations: [] });
+  it('runs extract-method as evaluate -> preview and returns a handle, not the opaque blob', async () => {
+    // A refactoring is a 3-step ADT conversation whose intermediate response must be echoed back
+    // byte-for-byte. The gateway keeps that blob server-side and hands out a short previewId, so it
+    // never has to survive a round trip through the LLM.
+    const evaluation = { xml: '<evaluate/>', affectedObjects: [] };
+    const preview = { xml: '<preview-with-server-tokens/>', affectedObjects: [{ uri: '/x' }] };
+    (refactor.extractMethodEvaluate as jest.Mock).mockResolvedValue(evaluation);
+    (refactor.extractMethodPreview as jest.Mock).mockResolvedValue(preview);
     const systems = testRegistry();
     const gateway = new AdtGateway(systems);
-    const args = { objectUri: '/x', range: { startLine: 1, startColumn: 0, endLine: 2, endColumn: 5 }, methodName: 'GET_FOO' };
+    const range = { startLine: 1, startColumn: 0, endLine: 2, endColumn: 5 };
 
-    await gateway.extractMethodPreview('dev', args);
+    const result = await gateway.extractMethodPreview('dev', { objectUri: '/x', range, methodName: 'GET_FOO' });
 
-    expect(refactor.extractMethodPreview).toHaveBeenCalledWith(systems.getConnection('dev'), args);
+    expect(refactor.extractMethodEvaluate).toHaveBeenCalledWith(systems.getConnection('dev'), { uri: '/x', range });
+    expect(refactor.extractMethodPreview).toHaveBeenCalledWith(systems.getConnection('dev'), {
+      evaluation,
+      methodName: 'GET_FOO',
+    });
+    expect(result.previewId).toEqual(expect.any(String));
+    expect(JSON.stringify(result)).not.toContain('server-tokens');
+  });
+
+  it('executes against the stored preview, and refuses an unknown, reused, or foreign-system handle', async () => {
+    const preview = { xml: '<preview/>', affectedObjects: [] };
+    (refactor.extractMethodEvaluate as jest.Mock).mockResolvedValue({ xml: '<e/>', affectedObjects: [] });
+    (refactor.extractMethodPreview as jest.Mock).mockResolvedValue(preview);
+    (refactor.extractMethodExecute as jest.Mock).mockResolvedValue({ affectedObjects: [{ uri: '/changed' }] });
+    const systems = testRegistry();
+    const gateway = new AdtGateway(systems);
+
+    const { previewId } = await gateway.extractMethodPreview('dev', {
+      objectUri: '/x',
+      range: { startLine: 1, startColumn: 0, endLine: 2, endColumn: 5 },
+      methodName: 'GET_FOO',
+    });
+
+    const executed = await gateway.extractMethodExecute('dev', { previewId });
+    expect(refactor.extractMethodExecute).toHaveBeenCalledWith(systems.getConnection('dev'), { preview });
+    expect(executed.changedObjects).toEqual(['/changed']);
+
+    // Single-use: the same handle must not apply the refactoring twice.
+    await expect(gateway.extractMethodExecute('dev', { previewId })).rejects.toThrow(/Unknown or expired/);
+    await expect(gateway.extractMethodExecute('dev', { previewId: 'never-issued' })).rejects.toThrow(
+      /Unknown or expired/,
+    );
   });
 
   it('wires debuggerSetVariableValue() to sap-adt-client debuggerOps.setVariableValue', async () => {

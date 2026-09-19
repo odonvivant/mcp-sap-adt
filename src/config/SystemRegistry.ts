@@ -263,6 +263,13 @@ export class SystemRegistry {
       baseUrl: system.url,
       client: system.client,
       auth: buildAuthStrategy(system.auth),
+      // Stateful, not the 'stateless' default: an ABAP enqueue lock only survives between the
+      // lock call and the write/delete that uses it inside a real server-side dialog session.
+      // Stateless, every lock/write pair fails with "Resource ... is not locked (invalid lock
+      // handle)" - confirmed live through this gateway, which is how this was found. One cached
+      // connection per alias serves reads and writes alike, so it has to be stateful up front;
+      // there is no point at which we could safely upgrade it.
+      sessionMode: 'stateful',
     });
     this.connections.set(alias, connection);
     return connection;

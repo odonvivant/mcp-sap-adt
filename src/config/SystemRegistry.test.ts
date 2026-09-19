@@ -187,4 +187,33 @@ describe('SystemRegistry - per-alias session caching', () => {
     expect(devConn1).toBe(devConn2);
     expect(devConn1).not.toBe(qasConn);
   });
+
+  it('builds stateful connections, without which every lock/write pair fails', async () => {
+    // An ABAP enqueue lock only survives between the lock call and the write that uses it inside a
+    // real server-side dialog session. Under the 'stateless' default the write comes back 423
+    // "Resource ... is not locked (invalid lock handle)" - found live, not by a fixture, because a
+    // mocked connection has no session at all.
+    const registry = SystemRegistry.fromObject({
+      dev: {
+        url: 'https://dev.example.com:44300',
+        client: '100',
+        auth: { type: 'basic', user: 'u', password: 'p' },
+        mode: 'guarded',
+      },
+    });
+
+    const sent: Array<Record<string, string | string[] | undefined>> = [];
+    const connection = registry.getConnection('dev');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (connection as any).http = {
+      request: (options: { headers?: Record<string, string> }) => {
+        sent.push(options.headers ?? {});
+        return Promise.resolve({ status: 200, headers: {}, body: '', raw: Buffer.alloc(0) });
+      },
+    };
+
+    await connection.request({ method: 'GET', path: '/sap/bc/adt/discovery' });
+
+    expect(sent[0]['X-sap-adt-sessiontype']).toBe('stateful');
+  });
 });

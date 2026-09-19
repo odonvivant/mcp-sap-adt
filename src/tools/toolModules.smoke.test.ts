@@ -114,9 +114,16 @@ const cases: Case[] = [
   },
   {
     name: 'adt_refactor_rename_preview',
-    args: { system: 'dev', objectUri: '/x', newName: 'ZCL_NEW' },
+    // ADT renames the identifier at a source position, so the range is part of the contract.
+    args: { system: 'dev', objectUri: '/x/source/main', line: 12, startColumn: 8, endColumn: 19, newName: 'ZCL_NEW' },
     gatewayMethod: 'renamePreview',
-    expectedGatewayArgs: { objectUri: '/x', newName: 'ZCL_NEW' },
+    expectedGatewayArgs: {
+      objectUri: '/x/source/main',
+      line: 12,
+      startColumn: 8,
+      endColumn: 19,
+      newName: 'ZCL_NEW',
+    },
     resultValue: { previewId: 'P1', affectedLocations: [] },
   },
   {
