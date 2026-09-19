@@ -40,14 +40,28 @@ const authSchema = z.union([basicAuthSchema, certPfxAuthSchema, certKeyPairAuthS
 export const SYSTEM_MODES = ['read-only', 'guarded', 'open'] as const;
 export type SystemMode = (typeof SYSTEM_MODES)[number];
 
+/** A package scope rule: a literal prefix, optionally ending in one `*`. A `*` anywhere else is
+ * rejected rather than accepted as a literal character - `"Z*FI"` can never match any package, so
+ * silently keeping it would leave an operator believing a deny rule protects them while it does
+ * nothing. */
+const packagePrefixSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.trim().slice(0, -1).includes('*'), {
+    message: '"*" is only supported as a trailing wildcard (e.g. "Z*"); it cannot appear mid-prefix',
+  })
+  .refine((value) => value.trim().replace(/\*$/, '').length > 0, {
+    message: 'must contain a prefix before the trailing "*" - a bare "*" matches everything',
+  });
+
 const systemEntrySchema = z
   .object({
     url: z.string().url(),
     client: z.string().min(1),
     auth: authSchema,
     mode: z.enum(SYSTEM_MODES).default('guarded'),
-    allowPackages: z.array(z.string().min(1)).optional(),
-    denyPackages: z.array(z.string().min(1)).optional(),
+    allowPackages: z.array(packagePrefixSchema).optional(),
+    denyPackages: z.array(packagePrefixSchema).optional(),
     allowObjectTypes: z.array(z.string().min(1)).optional(),
   })
   .strict();

@@ -100,7 +100,13 @@ describe('AdtGuardrail', () => {
     expect(outcome.allowed).toBe(true);
     expect(elicitation.calls).toHaveLength(0);
     expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatchObject({ toolName: 'adt_atc_create_run', system: 'dev', tier: 'B' });
+    expect(logs[0]).toMatchObject({
+      toolName: 'adt_atc_create_run',
+      system: 'dev',
+      tier: 'B',
+      mode: 'open',
+      decision: 'allow',
+    });
   });
 
   it('denies a Tier C call whose package matches denyPackages, before any confirmation prompt, regardless of mode', async () => {
@@ -134,5 +140,81 @@ describe('AdtGuardrail', () => {
       if (!outcome.allowed) reasons.add(outcome.denial.category);
     }
     expect(reasons).toEqual(new Set(['read-only', 'declined-confirmation', 'scope']));
+  });
+});
+
+describe('AdtGuardrail audit log', () => {
+  function capture(sys: ResolvedSystem, elicitation: FakeElicitationCapability) {
+    const logs: GuardrailLogEntry[] = [];
+    return { logs, guardrail: new AdtGuardrail([sys], elicitation, (entry) => logs.push(entry)) };
+  }
+
+  it('records an approved Tier C call on a guarded system', async () => {
+    const elicitation = new FakeElicitationCapability();
+    const sys = system({ alias: 'prd', mode: 'guarded' });
+    const { logs, guardrail } = capture(sys, elicitation);
+
+    await guardrail.evaluate(sys, 'adt_object_delete', 'C', { objectUri: '/x' });
+
+    expect(logs).toEqual([
+      { toolName: 'adt_object_delete', system: 'prd', tier: 'C', mode: 'guarded', decision: 'allow', denial: undefined },
+    ]);
+  });
+
+  it.each([
+    ['read-only', system({ mode: 'read-only' }), {}, 'read-only'],
+    ['scope', system({ mode: 'open', denyPackages: ['Z_X'] }), { packageName: 'Z_X' }, 'scope'],
+  ] as const)('records a denied Tier C call (%s)', async (_label, sys, args, category) => {
+    const elicitation = new FakeElicitationCapability();
+    const { logs, guardrail } = capture(sys, elicitation);
+
+    await guardrail.evaluate(sys, 'adt_object_delete', 'C', args);
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ decision: 'deny', denial: category, tier: 'C' });
+  });
+
+  it('records a declined confirmation and an unsupported client', async () => {
+    const declining = new FakeElicitationCapability();
+    declining.nextAction = 'decline';
+    const sys = system({ mode: 'guarded' });
+    const declined = capture(sys, declining);
+    await declined.guardrail.evaluate(sys, 'adt_object_delete', 'C', {});
+    expect(declined.logs[0]).toMatchObject({ decision: 'deny', denial: 'declined-confirmation' });
+
+    const unsupported = new FakeElicitationCapability();
+    unsupported.supported = false;
+    const blocked = capture(sys, unsupported);
+    await blocked.guardrail.evaluate(sys, 'adt_object_delete', 'C', {});
+    expect(blocked.logs[0]).toMatchObject({ decision: 'deny', denial: 'no-elicitation-support' });
+  });
+
+  it('never logs a Tier A call (nothing to audit, and no guardrail ran)', async () => {
+    const elicitation = new FakeElicitationCapability();
+    const sys = system({ mode: 'guarded' });
+    const { logs, guardrail } = capture(sys, elicitation);
+
+    await guardrail.evaluate(sys, 'adt_search', 'A', { query: 'ZCL*' });
+    expect(logs).toHaveLength(0);
+  });
+
+  it('never puts an argument value in the log entry', async () => {
+    const elicitation = new FakeElicitationCapability();
+    const sys = system({ mode: 'open', denyPackages: ['Z_SECRET'] });
+    const { logs, guardrail } = capture(sys, elicitation);
+
+    const secretSource = 'REPORT y_secret. WRITE: /  "hunter2".';
+    await guardrail.evaluate(sys, 'adt_object_source_write', 'C', {
+      objectUri: '/sap/bc/adt/programs/programs/Y_SECRET',
+      packageName: 'Z_SECRET_PKG',
+      source: secretSource,
+    });
+
+    expect(logs).toHaveLength(1);
+    const serialized = JSON.stringify(logs[0]);
+    expect(serialized).not.toContain(secretSource);
+    expect(serialized).not.toContain('Z_SECRET_PKG');
+    expect(serialized).not.toContain('/sap/bc/adt/');
+    expect(Object.keys(logs[0]).sort()).toEqual(['decision', 'denial', 'mode', 'system', 'tier', 'toolName']);
   });
 });

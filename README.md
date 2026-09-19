@@ -132,8 +132,8 @@ tier:
 
 | Tier | Meaning | Examples |
 |---|---|---|
-| A | Read-only, no mutation, no meaningful data-exposure/execution risk | discovery, search, object source read, DDIC metadata, usage references, package contents, transport/revision/ATC-worklist read, abapGit repo listing, syntax check, code completion, trace list/hit list/DB access |
-| B | Creates state but doesn't touch source/transports, or a read/cleanup carrying more than plain-metadata risk | table data query, ATC run creation, transport creation, rename/extract-method preview, object unlock, debugger breakpoint removal, trace configuration creation/deletion |
+| A | Read-only, no mutation, no meaningful data-exposure/execution risk | discovery, search, object source read, DDIC metadata, usage references, package contents, transport/revision/ATC-worklist read, abapGit repo listing, syntax check, code completion, trace list |
+| B | Creates state but doesn't touch source/transports, or a read/cleanup carrying more than plain-metadata risk | table data query, trace hit list/DB access (both replay captured SQL — including literal `WHERE` values — from other users' sessions), ATC run creation, transport creation, rename/extract-method preview, object unlock, debugger breakpoint removal, trace configuration creation/deletion |
 | C | Destructive, production-impacting, or executes arbitrary customer code | object create/delete/lock/activate, source write, transport release, abapGit pull/push, unit test run, debugger attach/step/set-breakpoints/variables/set-variable-value, rename/extract-method execute |
 
 Per-system `mode`:
@@ -142,10 +142,17 @@ Per-system `mode`:
 - **`guarded`** (default) — Tier B/C calls require a live confirmation prompt (MCP elicitation). If
   the connected client doesn't support elicitation, the call is denied by default (fails closed,
   never silently allowed).
-- **`open`** — Tier B/C calls proceed without a prompt, but every call is logged (to stderr).
+- **`open`** — Tier B/C calls proceed without a prompt.
+
+Every Tier B/C decision is logged to stderr in every mode — approvals as well as denials — as
+`tool`, `system`, `tier`, `mode`, `decision` and (for a denial) its category. Argument values are
+never logged.
 
 `allowPackages`/`denyPackages` (prefix match, e.g. `"Z*"`) and `allowObjectTypes` further narrow
-Tier B/C calls within any mode, and are checked before any confirmation prompt.
+Tier B/C calls within any mode, and are checked before any confirmation prompt. Prefix matching is
+case-insensitive and namespace-aware: `"Z*"` matches `/CUSTOMER/ZFI_CORE` as well as `ZFI_CORE`,
+while a namespaced rule like `"/CUSTOMER/Z*"` matches only inside that namespace. A `*` is accepted
+only as the last character — `"Z*FI"` is rejected at startup rather than silently never matching.
 
 ## Tool verification status
 

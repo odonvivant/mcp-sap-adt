@@ -127,6 +127,35 @@ describe('SystemRegistry.fromObject - Zod validation', () => {
   });
 });
 
+describe('SystemRegistry - package prefix rules', () => {
+  function withPackages(field: 'allowPackages' | 'denyPackages', values: string[]): unknown {
+    return { dev: { ...validBasic.dev, [field]: values } };
+  }
+
+  it.each(['allowPackages', 'denyPackages'] as const)(
+    'rejects a mid-prefix "*" in %s at load time instead of accepting a rule that can never fire',
+    (field) => {
+      expect(() => SystemRegistry.fromObject(withPackages(field, ['Z*FI']))).toThrow(SystemConfigError);
+      expect(() => SystemRegistry.fromObject(withPackages(field, ['Z*FI']))).toThrow(/trailing wildcard/);
+    },
+  );
+
+  it('names the offending field so the operator can find it', () => {
+    expect(() => SystemRegistry.fromObject(withPackages('denyPackages', ['Z*', '/CUST/*X*']))).toThrow(
+      /denyPackages\.1/,
+    );
+  });
+
+  it('rejects a bare "*", which would otherwise normalize to an empty never-matching prefix', () => {
+    expect(() => SystemRegistry.fromObject(withPackages('denyPackages', ['*']))).toThrow(SystemConfigError);
+  });
+
+  it('accepts a trailing wildcard, a namespaced prefix, and a literal prefix', () => {
+    const registry = SystemRegistry.fromObject(withPackages('denyPackages', ['Z*', '/CUSTOMER/Z*', 'Z_LEGACY']));
+    expect(registry.getSystem('dev').denyPackages).toEqual(['Z*', '/CUSTOMER/Z*', 'Z_LEGACY']);
+  });
+});
+
 describe('SystemRegistry.load - missing file', () => {
   it('throws SystemsFileMissingError, not a generic crash, when systems.json does not exist', () => {
     expect(() => SystemRegistry.load('/does/not/exist/systems.json')).toThrow(SystemsFileMissingError);

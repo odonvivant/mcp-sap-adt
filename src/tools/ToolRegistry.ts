@@ -2,7 +2,7 @@ import { AdtError } from 'sap-adt-client';
 import type { SystemRegistry } from '../config/SystemRegistry';
 import type { IAdtGateway } from '../gateway/IAdtGateway';
 import type { AdtGuardrail } from '../guardrails/AdtGuardrail';
-import { ADT_RISK_TIERS } from '../guardrails/AdtRiskTiers';
+import { riskTierFor, type RiskTier } from '../guardrails/AdtRiskTiers';
 import type { Tool } from './Tool';
 import {
   adtErrorToToolResult,
@@ -35,7 +35,7 @@ export class ToolRegistry {
   /** Registers `tool`. Throws immediately if `AdtRiskTiers` has no entry for its name (task 3.1:
    * "no silent default") or if the name is already registered. */
   register(tool: Tool<any, unknown>): void {
-    if (!ADT_RISK_TIERS[tool.name]) {
+    if (riskTierFor(tool.name) === undefined) {
       throw new Error(`ToolRegistry: no risk tier registered for tool "${tool.name}" in AdtRiskTiers`);
     }
     if (this.tools.has(tool.name)) {
@@ -53,7 +53,7 @@ export class ToolRegistry {
     if (!tool) {
       return unexpectedErrorToToolResult(new Error(`Unknown tool "${name}"`));
     }
-    const tier = ADT_RISK_TIERS[tool.name];
+    const tier = riskTierFor(tool.name) as RiskTier;
 
     const parsed = tool.inputSchema.safeParse(rawArgs);
     if (!parsed.success) {
