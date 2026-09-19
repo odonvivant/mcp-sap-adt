@@ -43,10 +43,26 @@ informed rather than a guess:
 2. Filter to objects already in customer namespace (`Z*`/`Y*`). If the package is new/empty or has
    too few custom objects to judge a pattern (fewer than ~3), say so plainly - there's no precedent
    to match against, and Step 4's question becomes moot (Clean ABAP defaults apply automatically).
+   Live-verified caveat: object count alone isn't a reliable signal for a shared sandbox package
+   like `$TMP` - it can hold dozens of objects and still show no real precedent, because it
+   accumulates unrelated scratch work from many unconnected tasks rather than one team's
+   convention (confirmed live: this dev system's `$TMP` holds ~85 objects spanning generated
+   Web Dynpro programs, leftover `Y*` test scaffolding from unrelated prior work, and a couple of
+   one-off `Z*` objects, with no shared naming pattern among them). Treat `$TMP`/a generic sandbox
+   package as precedent-inapplicable regardless of how many objects it contains.
 3. Look for a recognizable shared prefix pattern among the names found - specifically a
    `Z<MODULE>_<DESCRIPTIVE_NAME>`-style module prefix (real examples seen on this project's dev
    system: `ZBC_COCKPIT_*`, `ZWM_INTERFACES_FG`). Split names on `_` and check whether a majority
-   share the same leading token(s).
+   share the same leading token(s). Live-verified caveat: this breaks for classes, interfaces, and
+   exception classes, where ABAP's own type-prefix (`ZCL_`/`ZIF_`/`ZCX_`) occupies the *first*
+   `_`-split token instead of the module - e.g. package `ZBC` holds `ZCL_BC_COCKPIT_CENTRAL`,
+   `ZCL_BC_COCKPIT_DELIVERY`, and nine more `ZCL_BC_COCKPIT_*` classes, where the shared module
+   token `BC` is the *second* token, not the first (`ZCL`, which is universal across every Z-class
+   in the system and reveals nothing about this package). For `CLAS/OC`, `INTF/OI`, and exception
+   classes, strip the leading `ZCL_`/`ZIF_`/`ZCX_` type-prefix before comparing leading tokens. Also
+   expect messier real names generally - double underscores in generated proxy classes (e.g.
+   `ZCL_ZWM_TRANSFERENCIA__DPC`) and 30-character-limit truncation leaving a trailing `_` (e.g.
+   `ZIF_ZWM_GET_GUIAS_VALIDAS_REC_`) - both seen live in this same package's contents.
 4. If the target package's own contents are too sparse to tell, and the developer's purpose
    suggests a specific module/team (e.g. "BC" or "WM"), a supplementary `adt_search` with a
    wildcard query (e.g. `ZBC_*`) can widen the check across sibling packages in the same apparent
